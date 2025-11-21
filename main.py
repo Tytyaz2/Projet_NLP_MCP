@@ -1,13 +1,16 @@
-from fastapi import FastAPI
+import sys
+from pathlib import Path
 
-app = FastAPI()
+def main():
+    if len(sys.argv) < 2:
+        print("Usage: python main.py <dossier_a_trier>")
+        sys.exit(1)
 
+    folder = Path(sys.argv[1])
+    print(f"Triage du dossier : {folder}")
 
-@app.get("/")
-async def root():
-    return {"message": "Hello World"}
+    # 👉 Ici ton code NLP + classement de fichiers
+    # ...
 
-
-@app.get("/hello/{name}")
-async def say_hello(name: str):
-    return {"message": f"Hello {name}"}
+if __name__ == "__main__":
+    main()
