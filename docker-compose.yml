@@ -1,0 +1,13 @@
+services:
+  mcp:
+    build: .
+    container_name: mcp-file-classifier
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - OLLAMA_CLOUD=true
+      - OLLAMA_API_KEY=fb0da6b37ea8417999ec11f5616fa94a.bcNa9kAzt_VkjNQeHNThdjAc
+    volumes:
+      - ./files_to_sort:/files
+    command: ["python", "server.py"]

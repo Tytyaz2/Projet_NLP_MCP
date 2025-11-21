@@ -1,24 +1,38 @@
-FROM python:3.12-slim AS base
+# --- Base Python ---
+FROM python:3.11-slim
 
-# System deps
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    git curl nano && \
-    rm -rf /var/lib/apt/lists/*
+# --- Réduire les warnings et améliorer l'exécution ---
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1
 
-# App user
-RUN useradd -m appuser
+# --- Installer dépendances système ---
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    git \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# --- Installer Ollama client (optionnel) ---
+# ⚠ Si tu veux utiliser Ollama en local, il doit tourner dans un autre conteneur :
+# docker run -d --gpus=all -p 11434:11434 ollama/ollama:latest
+RUN curl -fsSL https://ollama.com/install.sh | sh || true
+
+# --- Ajouter le code du serveur MCP ---
 WORKDIR /app
-USER appuser
+COPY . /app
 
-# Install deps
-COPY --chown=appuser:appuser requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# --- Installer les dépendances Python ---
+# Ajoute un fichier requirements.txt contenant :
+# mcp
+# fastapi
+# uvicorn
+# python-dotenv
+# ollama
+RUN pip install --upgrade pip
+RUN pip install -r requirements.txt
 
-# Copy app
-COPY --chown=appuser:appuser . .
+# --- Exposer le port MCP (généralement 3000 mais libre) ---
+EXPOSE 3000
 
-# (optionnel) watchgod si tu veux, mais pas nécessaire pour un script one-shot
-# RUN pip install --no-cache-dir watchgod
-
-# 🔹 Ne lance plus main.py automatiquement
-CMD ["bash"]
+# --- Commande d'exécution du serveur MCP ---
+CMD ["python", "server.py"]
