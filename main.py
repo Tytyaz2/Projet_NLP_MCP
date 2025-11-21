@@ -73,7 +73,7 @@ def extract_preview(path: str) -> str:
 # Appel LLM (Ollama) pour analyser le document
 # ─────────────────────────────────────────
 
-MODEL_NAME = "gemma3:4b"  # modèle Ollama utilisé
+MODEL_NAME = "llama3:latest"  # modèle Ollama utilisé
 
 
 def analyze_with_llm(preview: str, filename: str) -> dict:
@@ -94,31 +94,39 @@ def analyze_with_llm(preview: str, filename: str) -> dict:
     )
 
     user_prompt = f"""
-On te donne un extrait correspondant principalement à la première page d'un document.
+On te fournit un extrait de texte provenant principalement de la première page d'un document.
 
 Nom du fichier : {filename}
 
-À partir de ce seul texte, tu dois :
+Ta tâche est de :
 
-1. Déterminer le TYPE du document parmi : "article", "cv", "ordonnance" ou autre si besoin.
-   - "cv" : curriculum vitae, profil de personne, expériences, formations, compétences, etc.
-   - "ordonnance" : document médical avec prescriptions, posologie, nom de médecin ou d'établissement de santé.
-   - "article" : rapport, article, note, mémoire, documentation, texte explicatif structuré.
-   - "autre" : à toi de déterminer le TYPE.
+Identifier le TYPE du document. Choisis parmi les catégories suivantes :
+   - "cv" : curriculum vitae, profil d'une personne, expériences, formations, compétences.
+   - "ordonnance" : document médical contenant prescriptions, posologie, nom de médecin ou établissement.
+   - "article" : rapport, note, article, documentation ou texte explicatif structuré.
+   - "facture" : document commercial indiquant des montants, références clients, TVA, dates d'émission.
+   - "contrat" : accord légal entre parties, clauses, signatures, conditions.
+   - "email" : message électronique, avec expéditeur, destinataire, sujet et date.
+   - "lettre" : correspondance administrative ou personnelle.
+   - "relevé bancaire" : document indiquant transactions, compte, dates et montants.
+   - "document juridique" : actes, décisions, réglementations, statuts, ou documents officiels légaux.
+   - "cours" : document retranscrivant des informations à but pédagogique. 
+   - "autre" : tout autre type de document non listé ci-dessus.
+   
 
-2. Déterminer la DATE DU DOCUMENT si elle est indiquée dans le texte (date de rédaction / émission).
-   - Retourne-la au format YYYY-MM-DD si possible.
-   - Sinon, mets "unknown".
+Identifier la DATE du document si elle est présente dans le texte.  
+   - Essaie de détecter la date de rédaction ou d'émission.  
+   - Retourne-la au format ISO YYYY-MM-DD si possible, sinon "unknown".  
+   - Supporte différents formats : "DD/MM/YYYY", "MM/DD/YYYY", "Month YYYY", etc.
 
-3. Proposer entre 3 et 8 mots-clés représentatifs du contenu.
+Proposer entre 3 et 8 mots-clés représentatifs du contenu.  
+   - Les mots-clés doivent être pertinents et compréhensibles pour un humain.  
+   - Favorise les groupes de mots significatifs (ex : "machine learning", "rapport financier") plutôt que des tokens isolés.
 
-Réponds STRICTEMENT en JSON de la forme :
-
-{{
-  "type": "...",
-  "date": "...",
-  "keywords": ["...", "...", "..."]
-}}
+Important : 
+- Réponds STRICTEMENT en JSON valide, avec exactement les champs : "type", "date", "keywords".
+- Ne rajoute aucun texte, explication ou commentaire en dehors du JSON.
+- Si une information est inconnue, mets "unknown".
 
 Texte du document :
 
@@ -295,7 +303,7 @@ def safe_move(src: Path, dest_dir: Path) -> Path:
 
 def organize_directory(root: Path) -> None:
     """
-    1. Liste les fichiers du dossier (non récursif pour l'instant).
+    1. Liste les fichiers du dossier.
     2. Analyse chaque fichier avec le LLM (type, keywords, date).
     3. Crée une arborescence:
        <root>/<type>/<sous-dossier-theme basé sur keywords>/,
