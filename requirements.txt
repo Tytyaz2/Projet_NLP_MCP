@@ -2,3 +2,6 @@ mcp
 fastapi
 uvicorn
 python-dotenv
+pypdf
+python-docx
+ollama
