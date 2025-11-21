@@ -4,7 +4,7 @@ from pypdf import PdfReader
 from docx import Document
 import ollama
 
-MODEL_NAME = "llama3"  # nom du modèle dans le cloud (sans :latest)
+MODEL_NAME = "deepseek-v3.1:671b-cloud"  # nom du modèle dans le cloud (sans :latest)
 
 # -------------------------------------------------
 # Extraction previews

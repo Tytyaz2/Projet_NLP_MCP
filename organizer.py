@@ -6,7 +6,7 @@ import unicodedata
 import re
 import ollama
 
-MODEL_NAME = "llama3"  # Ollama Cloud, pas besoin de :latest
+MODEL_NAME = "deepseek-v3.1:671b-cloud"  # Ollama Cloud, pas besoin de :latest
 
 # -------------------------------------------------
 # Slugify : noms de dossiers sûrs
