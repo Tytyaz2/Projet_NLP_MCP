@@ -1,24 +1,16 @@
-FROM python:3.12-slim AS base
-
-# System deps
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    git curl nano && \
-    rm -rf /var/lib/apt/lists/*
-
-# App user
-RUN useradd -m appuser
+# Base python image
+FROM python:3.11-slim
+# Defining /app as default working directory in the container
 WORKDIR /app
-USER appuser
-
-# Install deps
-COPY --chown=appuser:appuser requirements.txt .
+# Copy dependencies
+COPY requirements.txt .
+# Installing librairies
 RUN pip install --no-cache-dir -r requirements.txt
-
-# Copy app
-COPY --chown=appuser:appuser . .
-
-# (optionnel) watchgod si tu veux, mais pas nécessaire pour un script one-shot
-# RUN pip install --no-cache-dir watchgod
-
-# 🔹 Ne lance plus main.py automatiquement
-CMD ["bash"]
+# Copying rest of the code including mcp_server.py to /app
+COPY . .
+# Max root authorized by Docker specified when 'docker run'
+ENV CONTAINER_ROOT=/data_mount
+# Listening 8000 port (MCP Server)
+EXPOSE 8000
+# Launching server command when container running
+CMD ["python", "mcp_server.py"]

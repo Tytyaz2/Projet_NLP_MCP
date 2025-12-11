@@ -1,7 +1,6 @@
-mcp
+fastmcp==2.13.3
+pydantic
 fastapi
+langchain==1.1.2
+langchain-community
 uvicorn
-python-dotenv
-pypdf
-python-docx
-ollama
