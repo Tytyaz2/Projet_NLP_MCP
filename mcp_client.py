@@ -42,6 +42,28 @@ def move_file(source_path: str, destination_path: str) -> str:
     return call_mcp("move_file", source_path=source_path, destination_path=destination_path)
 
 # ==========================
+# SAFE JSON PARSER (AJOUT MINIMAL)
+# ==========================
+def safe_json_loads(raw: str, context: str):
+    if not raw or not raw.strip():
+        print(f"[WARN] Réponse LLM vide ({context})")
+        return None
+
+    raw = raw.strip()
+
+    if not raw.startswith("{"):
+        print(f"[WARN] Réponse non JSON ({context})")
+        print(f"[LLM RAW] {raw[:200]}")
+        return None
+
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError as e:
+        print(f"[WARN] JSON invalide ({context}) : {e}")
+        print(f"[LLM RAW] {raw[:200]}")
+        return None
+
+# ==========================
 # PROMPTS — DOCUMENT ANALYSIS
 # ==========================
 DOC_SYSTEM_PROMPT = """
@@ -120,7 +142,11 @@ if __name__ == "__main__":
             ]
 
             response = llm.invoke(messages)
-            data = json.loads(response.content)
+            data = safe_json_loads(response.content, f"doc analysis: {filename}")
+
+            if data is None:
+                print(f"[WARN] Analyse ignorée pour {filename}")
+                continue
 
             doc_type = data.get("type", "autre")
             keywords = data.get("keywords", [])
@@ -137,8 +163,12 @@ if __name__ == "__main__":
             ]
 
             response = llm.invoke(messages)
-            theme_data = json.loads(response.content)
-            theme = theme_data.get("folder_name", "divers")
+            theme_data = safe_json_loads(response.content, f"theme generation: {filename}")
+
+            theme = (
+                theme_data.get("folder_name", "divers")
+                if theme_data else "divers"
+            )
 
             target_dir = f"{doc_type}/{theme}"
             create_directory(target_dir)
