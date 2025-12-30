@@ -1,21 +1,20 @@
-from langchain_ollama import ChatOllama
-from langchain_core.tools import StructuredTool
-from langchain_core.messages import HumanMessage
-from langchain.agents import create_agent
-
+import time
+import json
 import requests
 import traceback
-from typing import Any
+from typing import Any, List
 
+from langchain_ollama import ChatOllama
+from langchain_core.tools import StructuredTool
+from langchain_core.messages import HumanMessage, SystemMessage
 
 # ----------------------------
 # MCP SERVER CONFIG
 # ----------------------------
 MCP_SERVER_URL = "http://localhost:8000"
 
-
 # ----------------------------
-# LLM (Correct modern import)
+# LLM
 # ----------------------------
 llm = ChatOllama(model="llama3.2:1b", temperature=0)
 
@@ -39,20 +38,23 @@ def execute_mcp_tool(tool_name: str, **kwargs: Any) -> str:
 # TOOL DEFINITIONS
 # ----------------------------
 def set_sandbox_limit(limit_path: str) -> str:
-    """Sets the safety boundary. MUST be called first for sub-folder tasks."""
     return execute_mcp_tool("set_sandbox_limit", limit_path=limit_path)
 
-def list_files(path: str = "") -> str:
-    """Lists files in the current path or specified path."""
-    return execute_mcp_tool("list_files", path=path)
+def list_files(path: str = "") -> List[str]:
+    result = execute_mcp_tool("list_files", path=path)
+    try:
+        return json.loads(result) if result.startswith("[") else result.splitlines()
+    except Exception:
+        return result.splitlines()
 
 def move_file(source_path: str, destination_path: str) -> str:
-    """Moves a file from source to destination."""
     return execute_mcp_tool("move_file", source_path=source_path, destination_path=destination_path)
 
 def create_directory(path: str) -> str:
-    """Creates a folder at the specified path."""
     return execute_mcp_tool("create_directory", path=path)
+
+def extract_preview(path: str) -> str:
+    return execute_mcp_tool("extract_preview", path=path)
 
 mcp_tools = [
     StructuredTool.from_function(
@@ -61,68 +63,106 @@ mcp_tools = [
         description="Sets a safety boundary. Call this FIRST if the user mentions a specific folder (e.g. 'Photos'). The path is relative to the root."
     ),
     StructuredTool.from_function(
-        func=list_files,
-        name="list_files",
-        # INSTRUCTION CRITIQUE ICI :
-        description="Lists files in a directory. IMPORTANT: To list the ROOT directory, you MUST use an empty string '' as the path. DO NOT use '/' or '/home'. If the user does not specify a folder, assume path=''."
+        func=extract_preview,
+        name="extract_preview",
+        description="Returns a textual preview of a file (PDF, DOCX, TXT)."
     ),
     StructuredTool.from_function(
         func=move_file,
         name="move_file",
-        description="Moves a file. Args: source_path, destination_path. Both paths are relative to the current root. Example: source_path='file.txt', destination_path='Folder/file.txt'."
+        description="Moves a file. Args: source_path, destination_path. Both paths relative to root."
     ),
     StructuredTool.from_function(
         func=create_directory,
         name="create_directory",
-        description="Creates a NEW directory. REQUIRED ARGUMENT: 'path' (the string name of the folder to create). Example: if user says 'create test', path='test'."
+        description="Creates a NEW directory. Arg: 'path'."
     ),
 ]
 
 # ----------------------------
-# PROMPT WITH MESSAGE HISTORY
+# SYSTEM PROMPT
 # ----------------------------
 SYSTEM_PROMPT = """
-You are a highly capable File Management Agent (MCP) specialized in organizing files on a user's system.
-Your goal is to fulfill user requests efficiently by choosing the right tool at the right time.
+You are an intelligent MCP-based document organizer.
 
-CRITICAL SECURITY RULE:
-1.  **DYNAMIC SANDBOXING:** If the user asks you to operate *within a specific subdirectory* (e.g., "Sort the 'Photos/Vacances' folder"), you MUST first call the 'set_sandbox_limit' tool with that path (e.g., "Photos/Vacances") before performing any file operations (list_files, move_file, etc.). This ensures operations are restricted to that safe zone.
-2.  If the user asks for a general operation on the entire mounted volume, DO NOT call 'set_sandbox_limit'.
-3.  Always check the contents of a directory using 'list_files' before attempting to move or delete files.
+You have access ONLY to the provided MCP tools.
+You MUST use the tools to act.
+You MUST NOT generate scripts, code, or invent paths.
 
-CRITICAL RULES FOR PATHS:
-1. THE ROOT DIRECTORY IS AN EMPTY STRING: "".
-2. NEVER assume Linux paths like '/home/user', '/etc', or '/var'. They do NOT exist here.
-3. If the user asks something without specifying a folder, you MUST call the correct tool with path="".
+ROOT DIRECTORY RULE:
+- The root directory is an empty string: "".
 
-LOGIC RULES:
-1. If the user targets a specific subfolder (e.g., "Sort the 'Invoices' folder"), call 'set_sandbox_limit' with that folder name FIRST.
-2. Always list files using 'list_files' to see what exists before moving anything.
-
-Response format: Just perform the action and report the result concisely.
+WORKFLOW RULES:
+1. Process ALL files.
+2. For each file:
+   - Infer the document TYPE among:
+     ["cv", "ordonnance", "article", "facture", "contrat", "email",
+      "lettre", "relevé bancaire", "document juridique", "cours", "autre"]
+   - Infer a short THEMATIC folder name (1–2 words max).
+3. Organize files using:
+   /<type>/<theme>/<filename>
+4. Create directories only if necessary.
+5. Use ONLY MCP tools to act.
 """
 
-agent_executor = create_agent(
-    model=llm,
-    tools=mcp_tools,
-    system_prompt=SYSTEM_PROMPT
-)
+USER_PROMPT_TEMPLATE = """
+Filename: {filename}
 
+Document preview:
+<<<
+{preview}
+>>>
+
+Return ONLY valid JSON with fields:
+  {{ "type": "...", "keywords": [...] }}
+"""
+
+# ----------------------------
+# MAIN EXECUTION
+# ----------------------------
 if __name__ == "__main__":
-    print("\n--- Agent Démarré ---")
-    
-    user_input = "I want you to move '2020_Retinal Image Segmentation with a Structure-Texture Demixing Network_Zhang.pdf' to the '2020_Artcile' directory"
-    print(f"\nUser: {user_input}")
-    
+    print("\n--- MCP CLIENT STARTED ---")
+    start_time = time.perf_counter()
+
     try:
-        # Appel de l'agent
-        events = agent_executor.invoke({"messages": [HumanMessage(content=user_input)]})
-        
-        # Récupération de la réponse
-        last_message = events["messages"][-1]
-        print(f"\n🤖 Agent: {last_message.content}")
-        
+        files = list_files()
+        print(f"[DEBUG] Fichiers trouvés: {files}")
+
+        for filename in files:
+            if filename.startswith("("):
+                continue
+
+            preview = extract_preview(filename)
+
+            messages = [
+                SystemMessage(content=SYSTEM_PROMPT),
+                HumanMessage(
+                    content=USER_PROMPT_TEMPLATE.format(
+                        filename=filename,
+                        preview=preview
+                    )
+                )
+            ]
+
+            response = llm.invoke(messages)
+            try:
+                data = json.loads(response.content)
+            except Exception:
+                print(f"❌ ERREUR : Le LLM n'a pas renvoyé de JSON valide pour {filename}. Contenu reçu : {response.content}")
+                continue
+
+            doc_type = data.get("type", "autre")
+            keywords = data.get("keywords", [])
+            theme = keywords[0] if keywords else "sans-theme"
+
+            target_dir = f"{doc_type}/{theme}"
+            create_directory(target_dir)
+            move_file(filename, f"{target_dir}/{filename}")
+
+        end_time = time.perf_counter()
+        print("\n--- MCP TASK FINISHED ---")
+        print(f"⏱️ Execution time: {end_time - start_time:.2f} seconds\n")
+
     except Exception:
-        # Affiche l'erreur complète pour le débogage
-        print("\n❌ Erreur d'exécution détaillée :")
+        print("\n❌ ERREUR DÉTAILLÉE :")
         traceback.print_exc()

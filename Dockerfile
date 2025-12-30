@@ -1,19 +1,23 @@
-# --- Base Python ---
 FROM python:3.11-slim
 
-# Base python image
-FROM python:3.11-slim
-# Defining /app as default working directory in the container
 WORKDIR /app
-# Copy dependencies
+
+# Dépendances système minimales
+RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
+
+# Copier requirements et installer
 COPY requirements.txt .
-# Installing librairies
+RUN pip install --upgrade pip setuptools wheel
 RUN pip install --no-cache-dir -r requirements.txt
-# Copying rest of the code including mcp_server.py to /app
+
+# Copier le serveur
 COPY . .
-# Max root authorized by Docker specified when 'docker run'
+
+# Définir la racine accessible
 ENV CONTAINER_ROOT=/data_mount
-# Listening 8000 port (MCP Server)
+
+# Exposer le port
 EXPOSE 8000
-# Launching server command when container running
+
+# Lancer le serveur MCP
 CMD ["python", "mcp_server.py"]
