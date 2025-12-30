@@ -2,8 +2,7 @@ import time
 import json
 import requests
 import traceback
-from typing import Any, List
-
+from typing import Any, List, Dict
 from langchain_ollama import ChatOllama
 from langchain_core.messages import SystemMessage, HumanMessage
 
@@ -42,29 +41,7 @@ def move_file(source_path: str, destination_path: str) -> str:
     return call_mcp("move_file", source_path=source_path, destination_path=destination_path)
 
 # ==========================
-# SAFE JSON PARSER (AJOUT MINIMAL)
-# ==========================
-def safe_json_loads(raw: str, context: str):
-    if not raw or not raw.strip():
-        print(f"[WARN] Réponse LLM vide ({context})")
-        return None
-
-    raw = raw.strip()
-
-    if not raw.startswith("{"):
-        print(f"[WARN] Réponse non JSON ({context})")
-        print(f"[LLM RAW] {raw[:200]}")
-        return None
-
-    try:
-        return json.loads(raw)
-    except json.JSONDecodeError as e:
-        print(f"[WARN] JSON invalide ({context}) : {e}")
-        print(f"[LLM RAW] {raw[:200]}")
-        return None
-
-# ==========================
-# PROMPTS — DOCUMENT ANALYSIS
+# PROMPTS
 # ==========================
 DOC_SYSTEM_PROMPT = """
 Tu es un classificateur de documents.
@@ -74,9 +51,7 @@ Tu es un classificateur de documents.
 - la DATE si elle est présente
 - des MOTS-CLÉS représentatifs
 
-Tu dois répondre STRICTEMENT en JSON valide, sans texte autour.
-
-Champs obligatoires :
+Réponds STRICTEMENT en JSON valide :
 { "type": "...", "date": "...", "keywords": [...] }
 """
 
@@ -89,23 +64,14 @@ Texte extrait du document :
 >>>
 """
 
-# ==========================
-# PROMPTS — THEME GENERATION
-# ==========================
 THEME_SYSTEM_PROMPT = """
-Tu génères des noms de sous-dossiers pour organiser des documents.
+Tu génères des noms de sous-dossiers courts et cohérents pour organiser des documents.
 
-À partir d’un TYPE de document et d’une liste de mots-clés, tu dois proposer
-un nom de thème GÉNÉRAL et ABSTRAIT.
-
-Règles importantes :
-- Maximum 2 mots.
-- Résumer le sujet général, pas le document exact.
-- Éviter les noms trop spécifiques ou uniques.
-- Le thème doit pouvoir regrouper plusieurs documents.
-
-Réponds STRICTEMENT en JSON :
-{ "folder_name": "..." }
+Règles :
+- Maximum 2 mots
+- Nom abstrait, général, pouvant regrouper plusieurs fichiers
+- Pas de dossiers vagues ou génériques comme 'PDF', 'document', 'Document'
+- Réponds STRICTEMENT en JSON : { "folder_name": "..." }
 """
 
 THEME_USER_TEMPLATE = """
@@ -117,66 +83,79 @@ Mots-clés :
 """
 
 # ==========================
+# HELPER FUNCTIONS
+# ==========================
+def safe_json_loads(s: str) -> Dict:
+    """Parse JSON robustly; fallback to empty dict"""
+    try:
+        s_clean = s.strip().strip("```")
+        return json.loads(s_clean)
+    except Exception:
+        return {}
+
+# ==========================
 # MAIN
 # ==========================
 if __name__ == "__main__":
     print("\n--- MCP CLIENT STARTED ---")
-    start = time.perf_counter()
+    start_time = time.perf_counter()
 
     try:
+        # ---- Step 1: Collect all files ----
         files = list_files("")
         print(f"[DEBUG] Fichiers trouvés: {files}")
+
+        all_docs = []
 
         for filename in files:
             preview = extract_preview(filename)
 
-            # ---- Analyse document ----
+            # ---- Document Analysis ----
             messages = [
                 SystemMessage(content=DOC_SYSTEM_PROMPT),
-                HumanMessage(
-                    content=DOC_USER_TEMPLATE.format(
-                        filename=filename,
-                        preview=preview
-                    )
-                )
+                HumanMessage(content=DOC_USER_TEMPLATE.format(filename=filename, preview=preview))
             ]
-
             response = llm.invoke(messages)
-            data = safe_json_loads(response.content, f"doc analysis: {filename}")
-
-            if data is None:
-                print(f"[WARN] Analyse ignorée pour {filename}")
-                continue
+            data = safe_json_loads(response.content)
 
             doc_type = data.get("type", "autre")
             keywords = data.get("keywords", [])
+            date = data.get("date", "unknown")
 
-            # ---- Génération thème ----
+            all_docs.append({
+                "filename": filename,
+                "type": doc_type,
+                "keywords": keywords,
+                "date": date
+            })
+
+        # ---- Step 2: Group by type and generate themes ----
+        type_to_keywords = {}
+        for doc in all_docs:
+            type_to_keywords.setdefault(doc["type"], []).extend(doc["keywords"])
+
+        type_to_themes = {}
+        for doc_type, kws in type_to_keywords.items():
             messages = [
                 SystemMessage(content=THEME_SYSTEM_PROMPT),
-                HumanMessage(
-                    content=THEME_USER_TEMPLATE.format(
-                        doc_type=doc_type,
-                        keywords=", ".join(keywords)
-                    )
-                )
+                HumanMessage(content=THEME_USER_TEMPLATE.format(doc_type=doc_type, keywords=", ".join(kws)))
             ]
-
             response = llm.invoke(messages)
-            theme_data = safe_json_loads(response.content, f"theme generation: {filename}")
+            theme_data = safe_json_loads(response.content)
+            folder_name = theme_data.get("folder_name", "divers")
+            type_to_themes[doc_type] = folder_name
 
-            theme = (
-                theme_data.get("folder_name", "divers")
-                if theme_data else "divers"
-            )
-
+        # ---- Step 3 & 4: Create folders and move files ----
+        for doc in all_docs:
+            doc_type = doc["type"]
+            theme = type_to_themes.get(doc_type, "divers")
             target_dir = f"{doc_type}/{theme}"
             create_directory(target_dir)
-            move_file(filename, f"{target_dir}/{filename}")
+            move_file(doc["filename"], f"{target_dir}/{doc['filename']}")
 
-        end = time.perf_counter()
+        end_time = time.perf_counter()
         print("\n--- MCP TASK FINISHED ---")
-        print(f"⏱️ Execution time: {end - start:.2f} seconds\n")
+        print(f"⏱️ Execution time: {end_time - start_time:.2f} seconds\n")
 
     except Exception:
         print("\n❌ ERREUR DÉTAILLÉE :")
