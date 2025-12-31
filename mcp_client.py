@@ -1,162 +1,159 @@
-import time
+import os
 import json
+import time
 import requests
-import traceback
-from typing import Any, List, Dict
+from typing import List
 from langchain_ollama import ChatOllama
-from langchain_core.messages import SystemMessage, HumanMessage
+from langchain_core.messages import HumanMessage, SystemMessage
 
 # ==========================
-# MCP SERVER CONFIG
+# CONFIGURATION
 # ==========================
-MCP_SERVER_URL = "http://localhost:8000"
+MCP_SERVER_URL = os.getenv("MCP_SERVER_URL", "http://localhost:8000")
+OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
+MODEL_NAME = "llama3" 
 
-# ==========================
-# LLM
-# ==========================
-llm = ChatOllama(model="llama3.2:1b", temperature=0)
+print(f"--- CONFIG CLIENT ---")
+print(f"Server MCP : {MCP_SERVER_URL}")
+print(f"Ollama URL : {OLLAMA_HOST}")
+print(f"Modèle     : {MODEL_NAME}")
 
-# ==========================
-# MCP TOOL CALLER
-# ==========================
-def call_mcp(tool: str, **kwargs) -> Any:
-    url = f"{MCP_SERVER_URL}/tools/{tool}/execute"
-    r = requests.post(url, json=kwargs)
-    r.raise_for_status()
-    return r.json() if r.headers.get("content-type", "").startswith("application/json") else r.text
-
-# ==========================
-# MCP TOOLS
-# ==========================
-def list_files(path: str = "") -> List[str]:
-    return call_mcp("list_files", path=path)
-
-def extract_preview(path: str) -> str:
-    return call_mcp("extract_preview", path=path)
-
-def create_directory(path: str) -> str:
-    return call_mcp("create_directory", path=path)
-
-def move_file(source_path: str, destination_path: str) -> str:
-    return call_mcp("move_file", source_path=source_path, destination_path=destination_path)
+llm = ChatOllama(
+    model=MODEL_NAME, 
+    base_url=OLLAMA_HOST,
+    temperature=0, 
+    num_ctx=8192
+)
 
 # ==========================
-# PROMPTS
+# FONCTIONS API
 # ==========================
-DOC_SYSTEM_PROMPT = """
-Tu es un classificateur de documents.
-
-À partir du texte fourni, tu dois identifier :
-- le TYPE du document
-- la DATE si elle est présente
-- des MOTS-CLÉS représentatifs
-
-Réponds STRICTEMENT en JSON valide :
-{ "type": "...", "date": "...", "keywords": [...] }
-"""
-
-DOC_USER_TEMPLATE = """
-Nom du fichier : {filename}
-
-Texte extrait du document :
-<<<
-{preview}
->>>
-"""
-
-THEME_SYSTEM_PROMPT = """
-Tu génères des noms de sous-dossiers courts et cohérents pour organiser des documents.
-
-Règles :
-- Maximum 2 mots
-- Nom abstrait, général, pouvant regrouper plusieurs fichiers
-- Pas de dossiers vagues ou génériques comme 'PDF', 'document', 'Document'
-- Réponds STRICTEMENT en JSON : { "folder_name": "..." }
-"""
-
-THEME_USER_TEMPLATE = """
-Type de document :
-{doc_type}
-
-Mots-clés :
-{keywords}
-"""
-
-# ==========================
-# HELPER FUNCTIONS
-# ==========================
-def safe_json_loads(s: str) -> Dict:
-    """Parse JSON robustly; fallback to empty dict"""
+def api_list_files(path: str = "") -> List[str]:
     try:
-        s_clean = s.strip().strip("```")
-        return json.loads(s_clean)
-    except Exception:
-        return {}
+        resp = requests.post(f"{MCP_SERVER_URL}/tools/list_files/execute", json={"path": path})
+        resp.raise_for_status()
+        return resp.json()
+    except Exception as e:
+        print(f"⚠️ Erreur connexion MCP (list_files): {e}")
+        return []
+
+def api_extract_preview(path: str) -> str:
+    try:
+        resp = requests.post(f"{MCP_SERVER_URL}/tools/extract_preview/execute", json={"path": path})
+        return str(resp.json())[:1000] 
+    except:
+        return ""
+
+def api_move_file(source: str, dest_folder: str):
+    requests.post(f"{MCP_SERVER_URL}/tools/create_directory/execute", json={"path": dest_folder})
+    full_dest = f"{dest_folder}/{source}"
+    requests.post(f"{MCP_SERVER_URL}/tools/move_file/execute", 
+                  json={"source_path": source, "destination_path": full_dest})
 
 # ==========================
-# MAIN
+# UTILITAIRE DE NETTOYAGE JSON
 # ==========================
-if __name__ == "__main__":
-    print("\n--- MCP CLIENT STARTED ---")
+def clean_and_parse_json(text: str):
+    """Extrait le JSON valide même s'il y a du texte autour."""
+    try:
+        # On cherche la première accolade ouvrante et la dernière fermante
+        start_idx = text.find('{')
+        end_idx = text.rfind('}')
+
+        if start_idx == -1 or end_idx == -1:
+            return None
+
+        # On extrait juste ce qu'il y a entre les accolades
+        json_str = text[start_idx : end_idx + 1]
+        return json.loads(json_str)
+    except Exception:
+        return None
+
+# ==========================
+# LOGIQUE PRINCIPALE
+# ==========================
+def run_architect():
+    # Démarrage du Chronomètre
     start_time = time.perf_counter()
+    
+    print("⏳ Attente du démarrage des services (5s)...")
+    time.sleep(5) 
+    
+    print(f"\n🚀 Démarrage de l'Architecte IA...")
 
+    # 1. SCAN
+    files = api_list_files("")
+    files = [f for f in files if "." in f and not f.startswith(".")]
+
+    if not files:
+        print("📂 Aucun fichier à traiter.")
+        return
+
+    print(f"📂 Fichiers détectés : {len(files)}")
+    
+    summaries = []
+    print("  Lecture des contenus...")
+    for f in files:
+        content = api_extract_preview(f).replace("\n", " ")[:300]
+        summaries.append(f"- Fichier: '{f}' | Contenu: {content}")
+
+    global_context = "\n".join(summaries)
+
+    # 2. RÉFLEXION
+    print("\n🧠 L'IA analyse et crée l'architecture...")
+    
+    sys_prompt = """
+    Tu es un Expert en Organisation Documentaire.
+    Ta mission : Classer une liste de fichiers en vrac dans des dossiers thématiques.
+    
+    Règles :
+    1. Crée des noms de dossiers courts (ex: 'Factures', 'Medical', 'CVs').
+    2. Réponds UNIQUEMENT avec le JSON (pas de phrase d'introduction).
+    Format attendu :
+    {
+        "plan": [
+            {"filename": "doc.pdf", "target_folder": "Dossier"}
+        ]
+    }
+    """
+    
+    user_msg = f"Voici les fichiers :\n{global_context}\n\nPropose le JSON de classement."
+
+    messages = [SystemMessage(content=sys_prompt), HumanMessage(content=user_msg)]
+    
     try:
-        # ---- Step 1: Collect all files ----
-        files = list_files("")
-        print(f"[DEBUG] Fichiers trouvés: {files}")
+        resp = llm.invoke(messages)
+        raw_content = resp.content
+        
+        # --- NETTOYAGE CORRIGÉ ---
+        data = clean_and_parse_json(raw_content)
+        
+        if not data or "plan" not in data:
+            print("❌ Erreur : Impossible d'extraire le JSON de la réponse.")
+            print(f"Réponse brute IA : \n{raw_content}")
+            return
 
-        all_docs = []
+        plan = data["plan"]
+        print(f"\n🏗️ Exécution du plan ({len(plan)} fichiers)...")
+        
+        for item in plan:
+            fname = item['filename']
+            folder = item['target_folder']
+            # Nettoyage nom dossier
+            folder = folder.strip().replace("/", "-").replace(" ", "_")
+            
+            print(f"  Move : {fname} -> 📁 {folder}")
+            api_move_file(fname, folder)
+            
+        print("\n✅ Terminé ! Organisation complète.")
+        
+    except Exception as e:
+        print(f"❌ Erreur critique : {e}")
 
-        for filename in files:
-            preview = extract_preview(filename)
+    # Arrêt du Chronomètre
+    end_time = time.perf_counter()
+    duration = end_time - start_time
+    print(f"\n⏱️ Temps d'exécution total : {duration:.2f} secondes")
 
-            # ---- Document Analysis ----
-            messages = [
-                SystemMessage(content=DOC_SYSTEM_PROMPT),
-                HumanMessage(content=DOC_USER_TEMPLATE.format(filename=filename, preview=preview))
-            ]
-            response = llm.invoke(messages)
-            data = safe_json_loads(response.content)
-
-            doc_type = data.get("type", "autre")
-            keywords = data.get("keywords", [])
-            date = data.get("date", "unknown")
-
-            all_docs.append({
-                "filename": filename,
-                "type": doc_type,
-                "keywords": keywords,
-                "date": date
-            })
-
-        # ---- Step 2: Group by type and generate themes ----
-        type_to_keywords = {}
-        for doc in all_docs:
-            type_to_keywords.setdefault(doc["type"], []).extend(doc["keywords"])
-
-        type_to_themes = {}
-        for doc_type, kws in type_to_keywords.items():
-            messages = [
-                SystemMessage(content=THEME_SYSTEM_PROMPT),
-                HumanMessage(content=THEME_USER_TEMPLATE.format(doc_type=doc_type, keywords=", ".join(kws)))
-            ]
-            response = llm.invoke(messages)
-            theme_data = safe_json_loads(response.content)
-            folder_name = theme_data.get("folder_name", "divers")
-            type_to_themes[doc_type] = folder_name
-
-        # ---- Step 3 & 4: Create folders and move files ----
-        for doc in all_docs:
-            doc_type = doc["type"]
-            theme = type_to_themes.get(doc_type, "divers")
-            target_dir = f"{doc_type}/{theme}"
-            create_directory(target_dir)
-            move_file(doc["filename"], f"{target_dir}/{doc['filename']}")
-
-        end_time = time.perf_counter()
-        print("\n--- MCP TASK FINISHED ---")
-        print(f"⏱️ Execution time: {end_time - start_time:.2f} seconds\n")
-
-    except Exception:
-        print("\n❌ ERREUR DÉTAILLÉE :")
-        traceback.print_exc()
+if __name__ == "__main__":
+    run_architect()

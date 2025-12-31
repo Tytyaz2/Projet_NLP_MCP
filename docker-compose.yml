@@ -1,0 +1,64 @@
+version: '3.8'
+
+services:
+  # ------------------------------------
+  # 1. LE CERVEAU (Ollama)
+  # ------------------------------------
+  ollama:
+    image: ollama/ollama:latest
+    container_name: nlp_ollama
+    ports:
+      # MODIFICATION ICI : On utilise le port 11435 sur ton PC pour éviter le conflit
+      # Le port interne reste 11434 pour que le client puisse lui parler
+      - "11435:11434"
+    volumes:
+      - ollama_storage:/root/.ollama
+    networks:
+      - mcp_network
+
+  # ------------------------------------
+  # 2. LES MAINS (Ton serveur MCP)
+  # ------------------------------------
+  mcp-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: nlp_mcp_server
+    ports:
+      - "8000:8000"
+    volumes:
+      # On lie ton dossier local 'Data' au dossier interne
+      - ./Data:/data_mount
+    environment:
+      - CONTAINER_ROOT=/data_mount
+    networks:
+      - mcp_network
+
+  # ------------------------------------
+  # 3. L'ARCHITECTE (Ton client IA)
+  # ------------------------------------
+  mcp-client:
+    build:
+      context: .
+      dockerfile: Dockerfile.client
+    container_name: nlp_mcp_client
+    depends_on:
+      - ollama
+      - mcp-server
+    environment:
+      # Communication interne : on utilise les noms de services
+      - MCP_SERVER_URL=http://mcp-server:8000
+      - OLLAMA_HOST=http://ollama:11434
+      # On force l'affichage des logs Python en temps réel
+      - PYTHONUNBUFFERED=1
+    networks:
+      - mcp_network
+
+# Création du réseau
+networks:
+  mcp_network:
+    driver: bridge
+
+# Création du volume persistant pour le modèle
+volumes:
+  ollama_storage:
