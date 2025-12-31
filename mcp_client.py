@@ -153,7 +153,11 @@ def run_architect():
     # Arrêt du Chronomètre
     end_time = time.perf_counter()
     duration = end_time - start_time
-    print(f"\n⏱️ Temps d'exécution total : {duration:.2f} secondes")
+    
+    minutes = int(duration // 60)
+    seconds = int(duration % 60)
+    
+    print(f"\n⏱️ Temps d'exécution total : {minutes} min {seconds} s ({duration:.2f} s)")
 
 if __name__ == "__main__":
     run_architect()
