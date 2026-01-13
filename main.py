@@ -43,7 +43,7 @@ def get_files_to_analyze(folder: Path, extensions: List[str] = None) -> List[Pat
     # Ne garder que les fichiers (pas les dossiers)
     files = [f for f in files if f.is_file()]
     
-    logger.info(f"📁 {len(files)} fichier(s) trouvé(s) dans {folder}")
+    logger.info(f" {len(files)} fichier(s) trouvé(s) dans {folder}")
     return files
 
 
@@ -57,11 +57,11 @@ def analyze_all_files(files: List[Path]) -> List[Dict]:
     Returns:
         Liste des informations extraites pour chaque fichier
     """
-    logger.info("🔍 Début de l'analyse des fichiers...")
+    logger.info(" Début de l'analyse des fichiers...")
     
     analyze_tool = server.tools.get("analyze_file")
     if not analyze_tool:
-        logger.error("❌ Outil 'analyze_file' non trouvé dans le serveur MCP")
+        logger.error(" Outil 'analyze_file' non trouvé dans le serveur MCP")
         return []
     
     files_info = []
@@ -74,7 +74,7 @@ def analyze_all_files(files: List[Path]) -> List[Dict]:
         except Exception as e:
             logger.error(f"    ✗ Erreur lors de l'analyse de {file_path.name}: {e}")
     
-    logger.info(f"✅ Analyse terminée : {len(files_info)}/{len(files)} fichiers analysés avec succès\n")
+    logger.info(f" Analyse terminée : {len(files_info)}/{len(files)} fichiers analysés avec succès\n")
     return files_info
 
 
@@ -88,16 +88,16 @@ def group_analyzed_files(files_info: List[Dict]) -> Dict:
     Returns:
         Dictionnaire contenant les groupes
     """
-    logger.info("📊 Regroupement des documents...")
+    logger.info(" Regroupement des documents...")
     
     group_tool = server.tools.get("group_files")
     if not group_tool:
-        logger.error("❌ Outil 'group_files' non trouvé dans le serveur MCP")
+        logger.error(" Outil 'group_files' non trouvé dans le serveur MCP")
         return {"groups": []}
     
     try:
         groups = group_tool(files_info)
-        logger.info(f"✅ {len(groups['groups'])} groupe(s) créé(s)\n")
+        logger.info(f" {len(groups['groups'])} groupe(s) créé(s)\n")
         
         # Afficher un résumé des groupes
         for i, group in enumerate(groups['groups'], 1):
@@ -106,7 +106,7 @@ def group_analyzed_files(files_info: List[Dict]) -> Dict:
         
         return groups
     except Exception as e:
-        logger.error(f"❌ Erreur lors du regroupement: {e}")
+        logger.error(f" Erreur lors du regroupement: {e}")
         return {"groups": []}
 
 
@@ -123,13 +123,13 @@ def apply_organization_plan(root_folder: Path, groups: Dict, dry_run: bool = Fal
         Dictionnaire avec les déplacements effectués
     """
     if dry_run:
-        logger.info("🔍 MODE DRY-RUN : Simulation des déplacements (aucun fichier ne sera déplacé)\n")
+        logger.info(" MODE DRY-RUN : Simulation des déplacements (aucun fichier ne sera déplacé)\n")
     else:
-        logger.info("📦 Application du plan d'organisation...\n")
+        logger.info(" Application du plan d'organisation...\n")
     
     apply_tool = server.tools.get("apply_file_plan")
     if not apply_tool:
-        logger.error("❌ Outil 'apply_file_plan' non trouvé dans le serveur MCP")
+        logger.error(" Outil 'apply_file_plan' non trouvé dans le serveur MCP")
         return {"moved": []}
     
     if dry_run:
@@ -141,12 +141,12 @@ def apply_organization_plan(root_folder: Path, groups: Dict, dry_run: bool = Fal
             for file_path in group['files']:
                 file_name = Path(file_path).name
                 logger.info(f"    • {file_name}")
-        logger.info("\n⚠️  Aucun fichier n'a été déplacé (mode dry-run)")
+        logger.info("\n  Aucun fichier n'a été déplacé (mode dry-run)")
         return {"moved": []}
     
     try:
         result = apply_tool(str(root_folder), groups['groups'])
-        logger.info(f"✅ {len(result['moved'])} fichier(s) déplacé(s)\n")
+        logger.info(f" {len(result['moved'])} fichier(s) déplacé(s)\n")
         
         # Afficher les déplacements
         for move in result['moved']:
@@ -156,7 +156,7 @@ def apply_organization_plan(root_folder: Path, groups: Dict, dry_run: bool = Fal
         
         return result
     except Exception as e:
-        logger.error(f"❌ Erreur lors de l'application du plan: {e}")
+        logger.error(f" Erreur lors de l'application du plan: {e}")
         return {"moved": []}
 
 
@@ -199,37 +199,37 @@ Exemples d'utilisation:
     
     # Vérifications
     if not folder_path.exists():
-        logger.error(f"❌ Le dossier {folder_path} n'existe pas")
+        logger.error(f" Le dossier {folder_path} n'existe pas")
         sys.exit(1)
     
     if not folder_path.is_dir():
-        logger.error(f"❌ {folder_path} n'est pas un dossier")
+        logger.error(f" {folder_path} n'est pas un dossier")
         sys.exit(1)
     
     # Bannière
     logger.info("=" * 60)
-    logger.info("🚀 MCP - Système de Tri Automatique de Documents")
+    logger.info(" MCP - Système de Tri Automatique de Documents")
     logger.info("=" * 60)
-    logger.info(f"📂 Dossier à trier: {folder_path}")
-    logger.info(f"🔧 Extensions: {', '.join(args.extensions)}")
+    logger.info(f" Dossier à trier: {folder_path}")
+    logger.info(f" Extensions: {', '.join(args.extensions)}")
     logger.info("=" * 60 + "\n")
     
     # Étape 1 : Récupération des fichiers
     files = get_files_to_analyze(folder_path, args.extensions)
     if not files:
-        logger.warning("⚠️  Aucun fichier à analyser")
+        logger.warning("  Aucun fichier à analyser")
         return
     
     # Étape 2 : Analyse des fichiers
     files_info = analyze_all_files(files)
     if not files_info:
-        logger.error("❌ Aucun fichier n'a pu être analysé")
+        logger.error(" Aucun fichier n'a pu être analysé")
         return
     
     # Étape 3 : Regroupement
     groups = group_analyzed_files(files_info)
     if not groups['groups']:
-        logger.error("❌ Aucun groupe n'a pu être créé")
+        logger.error(" Aucun groupe n'a pu être créé")
         return
     
     # Étape 4 : Application du plan
@@ -238,9 +238,9 @@ Exemples d'utilisation:
     # Résumé final
     logger.info("\n" + "=" * 60)
     if args.dry_run:
-        logger.info("✅ Simulation terminée avec succès")
+        logger.info(" Simulation terminée avec succès")
     else:
-        logger.info(f"✅ Tri terminé : {len(result.get('moved', []))} fichier(s) organisé(s)")
+        logger.info(f" Tri terminé : {len(result.get('moved', []))} fichier(s) organisé(s)")
     logger.info("=" * 60)
 
 
