@@ -1,159 +1,172 @@
----
+# MCP - Tri Automatique de Documents
 
-# 📁 MCP – Système de Tri Automatique de Dossiers (File Manager)
+Système de tri automatique de documents utilisant IA (Ollama) pour organiser vos fichiers intelligemment.
 
-Ce projet utilise un pipeline basé sur un **LLM (Ollama / Llama 3)** pour analyser, classer et organiser automatiquement des fichiers dans une arborescence logique.
-Il fonctionne intégralement en local via Docker, ou peut se connecter à Ollama Cloud si nécessaire.
-
----
-
-## 🚀 Lancement rapide
-
-### 1️⃣ Exécuter le script PowerShell
-
-```bash
-.\run_file_manager.ps1 <chemin_du_dossier_a_trier>
-```
-
-Si vous avez une erreur liée à l'exécution des scripts, activez les droits :
-
-```bash
-Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
-```
-
-Voir les politiques actuelles :
-
-```bash
-Get-ExecutionPolicy -List
-```
+**100% local via Docker** - Vos documents restent sur votre machine.
 
 ---
 
-## 🧠 Installation de Ollama
+## Démarrage rapide
 
-### ✔ Installer Ollama (local)
+### Prérequis
 
-Suivez l’installation pour votre OS :
-[https://ollama.com/download](https://ollama.com/download)
-
-### ✔ Télécharger un modèle local
-
-Par exemple Llama 3 :
+- **Docker Desktop** installé
+- **Ollama** en cours d'exécution
 
 ```bash
-ollama pull llama3
-```
-
-### ✔ Utiliser le modèle automatiquement avec le MCP
-
-Aucun changement à faire : le script utilisera automatiquement Ollama.
-
----
-
-## ☁️ (OPTIONNEL) Utiliser Ollama Cloud
-
-Si vous souhaitez exécuter les analyses côté cloud :
-
-```bash
-ollama signin
+# Lancer Ollama
 ollama serve
+
+# Télécharger un modèle
+ollama pull llama3:latest
 ```
 
-Puis sélectionnez un modèle cloud dans votre configuration. Ajouter ce model à la ligne 76 du main.py.
+### Lancement
+
+```bash
+# Depuis le dossier docker/
+cd docker
+docker-compose up --build
+```
+
+**C'est tout !** Vos fichiers dans `files_to_sort` seront automatiquement triés.
 
 ---
 
-# 🛠 Fonctionnement du pipeline
+## Comment ça marche ?
 
-Le système suit 4 étapes principales :
+### Processus
 
----
+```
+[Fichiers bruts] 
+    → [Extraction contenu]
+    → [Analyse LLM]
+    → [Classification]
+    → [Organisation automatique]
+```
 
-## **1. Récupération des fichiers**
+### Résultat
 
-Le script récupère :
+**Avant :**
+```
+files_to_sort/
+├── article1.pdf
+├── article2.pdf
+├── CV_Martin.pdf
+└── rapport.pdf
+```
 
-* les noms de fichiers
-* leurs chemins
-* un extrait de leur contenu (prévisualisation)
-
-Cela permet au modèle de comprendre le type du document.
-
----
-
-## **2. Analyse des fichiers**
-
-Un premier traitement est effectué :
-
-* extraction de mots-clés
-* tentative d’identification du type de fichier (CV, ordonnance, article, etc.)
-* extraction de métadonnées (dates, titres, noms)
-* détection de langue
-
-Ces informations servent de base au LLM pour proposer un classement intelligent.
-
----
-
-## **3. Classification via LLM**
-
-Un prompt spécialisé est envoyé au LLM afin :
-
-* de déterminer la catégorie exacte du fichier
-* de proposer une **structure hiérarchique** cohérente
-* de nommer les dossiers de manière propre
-* d’indiquer où chaque fichier doit être déplacé
-
-Le LLM retourne un **JSON strict**, par exemple :
-
-```json
-{
-  "target_folder": "Documents/Articles/Réseaux/2023",
-  "keywords": ["network slicing", "VSR", "architecture"],
-  "type": "article",
-  "date": "2023-05-12"
-}
+**Après :**
+```
+files_to_sort/
+├── article/
+│   └── medical-retine/ (2 fichiers)
+├── cv/ (1 fichier)
+└── rapport/ (1 fichier)
 ```
 
 ---
 
-## **4. Déplacement et création des dossiers**
-
-À partir du JSON :
-
-* les dossiers nécessaires sont créés automatiquement
-* les fichiers sont déplacés vers leur emplacement final
-* les collisions de noms sont gérées
-* les chemins sont sécurisés
-
-Le tri entier est **automatique**, reproductible, et piloté par le LLM.
-
----
-
-# 📌 Résumé du workflow
+## Architecture du projet
 
 ```
-[Fichiers brut]
-       ↓
-[Extraction keywords + métadonnées]
-       ↓
-[LLM → propose une hiérarchie complète]
-       ↓
-[Création dossiers + tri automatique]
-       ↓
-[Dossier final organisé proprement]
+Projet_NLP_MCP/
+├── docker/              # Configuration Docker + .env
+│   ├── Dockerfile
+│   ├── docker-compose.yml
+│   └── .env            # Configuration (modèle, dossiers)
+├── src/                 # Code source
+│   ├── mcp/            # Serveur MCP
+│   ├── classifier/     # Analyse et organisation
+│   └── tools/          # Outils MCP
+├── docs/                # Documentation
+│   ├── USAGE.md        # Guide d'utilisation détaillé
+│   └── QUICKSTART.md   # Démarrage rapide
+├── files_to_sort/       # Dossier à trier
+├── main.py              # Point d'entrée
+└── requirements.txt     # Dépendances Python
 ```
 
 ---
 
-# 📝 Notes
+## Configuration
 
-* Aucun fichier n’est supprimé automatiquement.
-* Le système fonctionne en local : vos documents ne quittent jamais votre machine.
-* Le modèle recommandé est **Llama 3 (via Ollama)**, performant pour classification.
-* Le script fonctionne sous Windows, Linux et macOS via Docker.
+### Choisir un modèle
 
+Éditez `docker/.env` :
 
-erreur ajouter des outils 
-serveur definit des outils 
-clients choisit ce quil veut faire  
-api chat => in formation serveur => besoin d'appeler => appeler telle fonction
+```bash
+# Modèle local (rapide, gratuit)
+OLLAMA_MODEL_NAME=llama3:latest
+
+# Modèle cloud (meilleure classification)
+OLLAMA_MODEL_NAME=deepseek-v3.1:671b-cloud
+```
+
+### Mode simulation
+
+```bash
+cd docker
+docker run --network="host" \
+  -v "../files_to_sort:/files" \
+  docker-mcp python main.py --folder /files --dry-run
+```
+
+---
+
+## Formats supportés
+
+- PDF (.pdf)
+- Word (.docx, .doc)
+- Texte (.txt)
+- OpenDocument (.odt)
+
+---
+
+## Documentation complète
+
+- **[Guide d'utilisation](./docs/USAGE.md)** - Exemples et cas d'usage
+- **[Démarrage rapide](./docs/QUICKSTART.md)** - Guide installation
+
+---
+
+## Dépannage
+
+### Ollama non connecté
+
+```bash
+# Vérifier qu'Ollama tourne
+ollama serve
+ollama list
+```
+
+### Erreur "model not found"
+
+```bash
+# Télécharger le modèle
+ollama pull llama3:latest
+```
+
+### Classification imprécise
+
+- Essayer un modèle plus puissant : `deepseek-v3.1:671b-cloud`
+- Vérifier que vos fichiers ont du contenu textuel
+
+---
+
+## Sécurité & Confidentialité
+
+- 100% local - Vos fichiers restent sur votre machine
+- Pas de cloud avec llama3:latest
+- Aucune suppression - Les fichiers sont déplacés
+- Open source - Code auditable
+
+---
+
+## Technologies
+
+- **MCP (Model Context Protocol)** - Architecture outils
+- **Ollama** - Exécution locale LLMs
+- **Docker** - Portabilité
+- **Python 3.11** - Backend
+

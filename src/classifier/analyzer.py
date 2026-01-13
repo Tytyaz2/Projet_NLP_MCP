@@ -1,10 +1,18 @@
 import json
+import os
 from pathlib import Path
 from pypdf import PdfReader
 from docx import Document
 import ollama
+import logging
 
-MODEL_NAME = "deepseek-v3.1:671b-cloud"  # nom du modèle dans le cloud (sans :latest)
+# Configuration du modèle depuis les variables d'environnement
+MODEL_NAME = os.getenv("OLLAMA_MODEL_NAME", "llama3:latest")
+
+# Configuration du client Ollama
+ollama_client = ollama.Client(host=os.getenv("OLLAMA_HOST", "http://localhost:11434"))
+
+logger = logging.getLogger(__name__)
 
 # -------------------------------------------------
 # Extraction previews
@@ -46,21 +54,55 @@ def extract_preview(path: Path) -> str:
 # -------------------------------------------------
 def analyze_document(path: Path) -> dict:
     preview = extract_preview(path)
+    filename = path.name
 
     system_prompt = (
-        "Tu es un classificateur de documents. "
-        "Retourne strictement un JSON contenant {type,date,keywords}."
+        "Tu es un expert en classification de fichiers. "
+        "Analyse le CONTENU réel du fichier, pas juste son extension. "
+        "Sois précis et descriptif dans ta classification. "
+        "Utilise des catégories qui reflètent vraiment la NATURE du contenu."
     )
 
     user_prompt = f"""
-Analyse ce document :
+Fichier: {filename}
 
+CONTENU (extrait):
 <<<
-{preview}
+{preview[:2000]}
 >>>
 
-Retourne exactement ce JSON :
+INSTRUCTIONS STRICTES:
 
+1. TYPE - Identifie la VRAIE nature du contenu (1-2 mots):
+   
+   DOCUMENTS ACADÉMIQUES/PROFESSIONNELS:
+   - "article" : article scientifique, recherche, publication
+   - "cv" : curriculum vitae, resume
+   - "rapport" : rapport de projet, compte-rendu
+   - "cours" : support de cours, slides, correction d'exercices
+   - "these" : thèse, mémoire
+   
+   DOCUMENTS PERSONNELS:
+   - "facture" : factures, devis
+   - "administratif" : documents officiels, formulaires
+   - "note" : notes personnelles, brouillons
+   
+   AUTRES TYPES:
+   - "tableur" : Excel, données tabulaires
+   - "presentation" : PowerPoint, slides
+   - "image" : photos, schémas, dessins
+   - "code" : fichiers de programmation
+   - "autre" : si vraiment inclassable
+
+2. KEYWORDS - 2 mots-clés maximum sur le SUJET/THÈME principal:
+   - Sois SPÉCIFIQUE et DESCRIPTIF
+   - Exemple bon: "segmentation-retine", "reseaux-5g", "optimisation-edge"
+   - Exemple mauvais: "ai", "document", "file"
+   - Évite les termes trop génériques
+
+3. DATE - Format YYYY ou YYYY-MM si présent, sinon "unknown"
+
+RETOURNE EXACTEMENT CE JSON:
 {{
   "type": "...",
   "date": "...",
@@ -69,7 +111,7 @@ Retourne exactement ce JSON :
 """
 
     try:
-        resp = ollama.chat(
+        resp = ollama_client.chat(
             model=MODEL_NAME,
             messages=[
                 {"role": "system", "content": system_prompt},
@@ -94,7 +136,7 @@ Retourne exactement ce JSON :
         }
 
     except Exception as e:
-        print(f"[ERREUR LLM] {path}: {e}")
+        logger.error(f"[ERREUR LLM] {path}: {e}")
         return {
             "path": str(path),
             "type": "autre",

@@ -1,8 +1,8 @@
-from mcp import Server, tool
+from src.mcp import Server, tool
 from pathlib import Path
 
-from analyzer import analyze_document
-from organizer import (
+from src.classifier import analyze_document
+from src.classifier import (
     group_documents,
     apply_plan
 )
