@@ -6,6 +6,8 @@ from docx import Document
 import ollama
 import logging
 
+from src.classifier.preprocessor import preprocess
+
 # Configuration du modèle depuis les variables d'environnement
 MODEL_NAME = os.getenv("OLLAMA_MODEL_NAME", "llama3:latest")
 
@@ -56,6 +58,14 @@ def analyze_document(path: Path) -> dict:
     preview = extract_preview(path)
     filename = path.name
 
+    # Prétraitement NLP
+    processed = preprocess(preview)
+    cleaned_text = processed['text']
+    detected_lang = processed['lang']
+    token_count = processed['token_count']
+
+    logger.info(f"[PREPROCESS] {filename}: lang={detected_lang}, tokens={token_count}")
+
     system_prompt = (
         "Tu es un expert en classification de fichiers. "
         "Analyse le CONTENU réel du fichier, pas juste son extension. "
@@ -65,10 +75,11 @@ def analyze_document(path: Path) -> dict:
 
     user_prompt = f"""
 Fichier: {filename}
+Langue détectée: {detected_lang}
 
-CONTENU (extrait):
+CONTENU (prétraité, {token_count} tokens):
 <<<
-{preview[:2000]}
+{cleaned_text[:2000]}
 >>>
 
 INSTRUCTIONS STRICTES:

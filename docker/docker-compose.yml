@@ -5,16 +5,17 @@ services:
       dockerfile: docker/Dockerfile
     container_name: mcp-file-classifier
     restart: "no"
-    network_mode: "host"
+    stdin_open: true   # Nécessaire pour MCP (communication stdio)
+    tty: true
     environment:
-      # URL d'Ollama (sur l'hôte)
+      # URL d'Ollama (sur l'hôte Windows)
       - OLLAMA_HOST=http://host.docker.internal:11434
       # Modèle Ollama à utiliser
-      - OLLAMA_MODEL_NAME=${OLLAMA_MODEL_NAME:-llama3:latest}
+      - OLLAMA_MODEL_NAME=${OLLAMA_MODEL_NAME:-gpt-oss:20b-cloud}
       # Dossier à trier (dans le conteneur)
       - FILES_TO_SORT=/files
     volumes:
-      # Monte le dossier à trier (chemin depuis le dossier docker/)
+      # Monte le dossier à trier
       - ../files_to_sort:/files
-    command: ["python", "main.py", "--folder", "/files"]
-
+    # Lance le serveur MCP
+    command: ["python", "src/tools/server.py"]

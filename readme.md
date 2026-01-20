@@ -1,116 +1,198 @@
 # MCP - Tri Automatique de Documents
 
-Système de tri automatique de documents utilisant IA (Ollama) pour organiser vos fichiers intelligemment.
+Système de tri automatique de documents contenant du texte utilisant IA locale (Ollama) pour organiser vos fichiers intelligemment.
 
-**100% local via Docker** - Vos documents restent sur votre machine.
+**100% local** - Vos documents restent sur votre machine.
 
 ---
 
-## Démarrage rapide
+## Démarrage rapide avec Claude Desktop
 
 ### Prérequis
 
-- **Docker Desktop** installé
-- **Ollama** en cours d'exécution
+- **Docker Desktop** installé et lancé
+- **Ollama** installé et en cours d'exécution sur votre PC
+- **Claude Desktop** installé avec un compte connecté
 
 ```bash
-# Lancer Ollama
+# Lancer Ollama (si pas déjà fait)
 ollama serve
 
-# Télécharger un modèle
+# Télécharger un modèle (au choix)
 ollama pull llama3:latest
+# ou
+ollama pull gpt-oss:20b-cloud
 ```
 
-### Lancement
+### Installation (3 étapes)
 
 ```bash
-# Depuis le dossier docker/
+# 1. Construire l'image Docker
 cd docker
-docker-compose up --build
+docker-compose build
+
+# 2. Installer la config Claude Desktop
+cd ..
+python install_claude_desktop.py
+
+# 3. Redémarrer Claude Desktop (fermer complètement et relancer)
 ```
 
-**C'est tout !** Vos fichiers dans `files_to_sort` seront automatiquement triés.
+### Utilisation
+
+Dans Claude Desktop, dites simplement :
+
+> **"Trie le dossier /home/user/Downloads"**
+
+ou en mode simulation (sans déplacer les fichiers) :
+
+> **"Trie /home/user/Documents en mode dry-run"**
+
+---
+
+## Architecture
+
+```
+┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
+│ Claude Desktop  │ --> │  Docker (MCP)   │ --> │ Ollama (local)  │
+│                 │     │  file-classifier│     │ localhost:11434 │
+└─────────────────┘     └─────────────────┘     └─────────────────┘
+```
+
+- **Claude Desktop** : Interface utilisateur, appelle les outils MCP
+- **Docker** : Contient le serveur MCP avec les outils de tri
+- **Ollama** : Tourne en local sur votre PC, analyse les documents
+
+---
+
+## Correspondance des chemins
+
+Le script d'installation monte automatiquement votre dossier utilisateur dans Docker :
+
+| Votre PC (Windows) | Ce que vous dites à Claude |
+|--------------------|----------------------------|
+| `C:\Users\VotreNom\Downloads` | `/home/user/Downloads` |
+| `C:\Users\VotreNom\Documents` | `/home/user/Documents` |
+| `C:\Users\VotreNom\Desktop` | `/home/user/Desktop` |
+
+---
+
+## Outils MCP disponibles
+
+| Outil | Description |
+|-------|-------------|
+| `sort_folder` | **Recommandé** - Trie automatiquement un dossier complet |
+| `list_files_to_sort` | Liste les fichiers d'un dossier |
+| `analyze_file` | Analyse un fichier avec l'IA |
+| `group_files` | Regroupe les fichiers analysés |
+| `apply_file_plan` | Applique le plan de tri |
 
 ---
 
 ## Comment ça marche ?
 
-### Processus
+### Pipeline de traitement
 
 ```
-[Fichiers bruts] 
-    → [Extraction contenu]
-    → [Analyse LLM]
-    → [Classification]
-    → [Organisation automatique]
+[Fichiers bruts]
+    → [Extraction contenu (PDF, DOCX, TXT)]
+    → [Analyse LLM (Ollama)]
+    → [Classification par type et thème]
+    → [Organisation automatique en dossiers]
 ```
 
-### Résultat
+### Exemple de résultat
 
 **Avant :**
 ```
-files_to_sort/
-├── article1.pdf
-├── article2.pdf
+Downloads/
+├── article_retine.pdf
+├── article_ia.pdf
 ├── CV_Martin.pdf
-└── rapport.pdf
+├── facture_edf.pdf
+└── rapport_stage.pdf
 ```
 
 **Après :**
 ```
-files_to_sort/
+Downloads/
 ├── article/
-│   └── medical-retine/ (2 fichiers)
-├── cv/ (1 fichier)
-└── rapport/ (1 fichier)
+│   ├── medical-retine/
+│   │   └── article_retine.pdf
+│   └── intelligence-artificielle/
+│       └── article_ia.pdf
+├── cv/
+│   └── CV_Martin.pdf
+├── facture/
+│   └── facture_edf.pdf
+└── rapport/
+    └── rapport_stage.pdf
 ```
 
 ---
 
-## Architecture du projet
+## Structure du projet
 
 ```
 Projet_NLP_MCP/
-├── docker/              # Configuration Docker + .env
-│   ├── Dockerfile
-│   ├── docker-compose.yml
-│   └── .env            # Configuration (modèle, dossiers)
-├── src/                 # Code source
-│   ├── mcp/            # Serveur MCP
-│   ├── classifier/     # Analyse et organisation
-│   └── tools/          # Outils MCP
-├── docs/                # Documentation
-│   ├── USAGE.md        # Guide d'utilisation détaillé
-│   └── QUICKSTART.md   # Démarrage rapide
-├── files_to_sort/       # Dossier à trier
-├── main.py              # Point d'entrée
-└── requirements.txt     # Dépendances Python
+├── docker/
+│   ├── Dockerfile               # Image Docker du serveur MCP
+│   ├── docker-compose.yml       # Orchestration
+│   └── .env                     # Configuration (modèle Ollama)
+├── src/
+│   ├── mcp/
+│   │   └── server.py            # Serveur FastMCP
+│   ├── classifier/
+│   │   ├── analyzer.py          # Extraction + analyse LLM
+│   │   └── organizer.py         # Regroupement + déplacement
+│   └── tools/
+│       └── server.py            # 5 outils MCP exposés
+├── install_claude_desktop.py    # Script d'installation automatique
+├── claude_desktop_config.template.json
+├── main.py                      # CLI standalone (sans Claude)
+└── requirements.txt
 ```
 
 ---
 
 ## Configuration
 
-### Choisir un modèle
+### Fichier d'environnement (.env)
 
-Éditez `docker/.env` :
+Avant de lancer le projet, vous devez créer le fichier de configuration :
 
 ```bash
-# Modèle local (rapide, gratuit)
+# Copier le fichier exemple
+cd docker
+cp .env.example .env
+```
+
+Puis éditez `docker/.env` selon vos besoins :
+
+| Variable | Description | Valeur par défaut |
+|----------|-------------|-------------------|
+| `OLLAMA_MODEL_NAME` | Modèle Ollama à utiliser | `deepseek-v3.1:671b-cloud` |
+| `OLLAMA_MODEL_PATH` | Chemin local vers les modèles Ollama | `${USERPROFILE}\.ollama` (Windows) |
+| `FILES_TO_SORT` | Dossier à trier (monté dans `/files` dans Docker) | `./files_to_sort` |
+| `MCP_PORT` | Port du serveur MCP | `3000` |
+| `OLLAMA_PORT` | Port d'Ollama | `11434` |
+
+### Changer le modèle Ollama
+
+Dans `docker/.env`, modifiez `OLLAMA_MODEL_NAME` :
+
+```bash
+# Cloud (performant, nécessite connexion)
+OLLAMA_MODEL_NAME=deepseek-v3.1:671b-cloud
+
+# Local (recommandé pour débuter)
 OLLAMA_MODEL_NAME=llama3:latest
 
-# Modèle cloud (meilleure classification)
-OLLAMA_MODEL_NAME=deepseek-v3.1:671b-cloud
+# Local (alternative légère)
+OLLAMA_MODEL_NAME=mistral:latest
 ```
 
-### Mode simulation
-
-```bash
-cd docker
-docker run --network="host" \
-  -v "../files_to_sort:/files" \
-  docker-mcp python main.py --folder /files --dry-run
-```
+Puis reconstruisez : `cd docker && docker-compose build`
 
 ---
 
@@ -123,50 +205,51 @@ docker run --network="host" \
 
 ---
 
-## Documentation complète
-
-- **[Guide d'utilisation](./docs/USAGE.md)** - Exemples et cas d'usage
-- **[Démarrage rapide](./docs/QUICKSTART.md)** - Guide installation
-
----
-
 ## Dépannage
 
-### Ollama non connecté
+### Claude Desktop : "Server disconnected"
 
-```bash
-# Vérifier qu'Ollama tourne
-ollama serve
-ollama list
-```
+1. Vérifiez que **Docker Desktop** est lancé
+2. Vérifiez que l'image est construite :
+   ```bash
+   cd docker && docker-compose build
+   ```
+3. Vérifiez qu'**Ollama** tourne :
+   ```bash
+   ollama serve
+   ollama list
+   ```
+4. Relancez le script d'installation :
+   ```bash
+   python install_claude_desktop.py
+   ```
+5. **Redémarrez complètement** Claude Desktop
 
 ### Erreur "model not found"
 
 ```bash
-# Télécharger le modèle
 ollama pull llama3:latest
 ```
 
 ### Classification imprécise
 
-- Essayer un modèle plus puissant : `deepseek-v3.1:671b-cloud`
-- Vérifier que vos fichiers ont du contenu textuel
+- Utilisez un modèle plus puissant : `gpt-oss:20b-cloud`
+- Vérifiez que vos fichiers contiennent du texte extractible
 
 ---
 
 ## Sécurité & Confidentialité
 
-- 100% local - Vos fichiers restent sur votre machine
-- Pas de cloud avec llama3:latest
-- Aucune suppression - Les fichiers sont déplacés
-- Open source - Code auditable
+- **100% local** - Vos fichiers ne quittent jamais votre machine
+- **Aucune suppression** - Les fichiers sont déplacés, jamais supprimés
+- **Open source** - Code auditable
 
 ---
 
 ## Technologies
 
-- **MCP (Model Context Protocol)** - Architecture outils
-- **Ollama** - Exécution locale LLMs
-- **Docker** - Portabilité
+- **MCP (Model Context Protocol)** - Protocole de communication IA ↔ outils
+- **FastMCP** - Framework Python pour serveurs MCP
+- **Ollama** - Exécution locale de LLMs
+- **Docker** - Portabilité et isolation
 - **Python 3.11** - Backend
-

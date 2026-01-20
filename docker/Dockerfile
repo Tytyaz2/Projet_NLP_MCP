@@ -3,7 +3,8 @@ FROM python:3.11-slim
 
 # --- Réduire les warnings et améliorer l'exécution ---
 ENV PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONPATH=/app
 
 # --- Installer dépendances système ---
 RUN apt-get update && apt-get install -y \
@@ -35,4 +36,4 @@ RUN pip install -r requirements.txt
 EXPOSE 3000
 
 # --- Commande d'exécution du serveur MCP ---
-CMD ["python", "server.py"]
+CMD ["python", "src/tools/server.py"]

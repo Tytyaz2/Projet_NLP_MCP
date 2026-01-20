@@ -31,11 +31,11 @@ def slugify(text: str) -> str:
 def normalize_doc_type(doc_type: str) -> str:
     """Normalise légèrement les types pour éviter les doublons."""
     doc_type_clean = doc_type.lower().strip()
-    
+
     # Normaliser les pluriels
     if doc_type_clean.endswith('s'):
         doc_type_clean = doc_type_clean[:-1]
-    
+
     # Normaliser quelques synonymes courants
     synonyms = {
         'picture': 'image',
@@ -55,113 +55,53 @@ def normalize_doc_type(doc_type: str) -> str:
         'sound': 'audio',
         'zip': 'archive',
     }
-    
+
     return synonyms.get(doc_type_clean, doc_type_clean)
 
 # -------------------------------------------------
-# Détection de thèmes similaires
+# Génération des catégories via LLM (en une seule fois)
 # -------------------------------------------------
-def get_main_theme(keywords: list[str]) -> str:
-    """Extrait le thème principal des keywords pour regrouper les sujets similaires."""
-    if not keywords:
-        return "general"
-    
-    # Mapping de termes similaires vers un thème commun
-    theme_mapping = {
-        # Médical/Santé
-        'retina': 'medical-retine',
-        'retinal': 'medical-retine',
-        'vessel': 'medical-retine',
-        'segmentation': 'medical-retine',
-        'medical': 'medical-retine',
-        'imaging': 'medical-retine',
-        
-        # Réseaux/5G
-        '5g': 'reseaux-5g',
-        '5G': 'reseaux-5g',
-        'network': 'reseaux-5g',
-        'traffic': 'reseaux-5g',
-        'slicing': 'reseaux-5g',
-        'resource': 'reseaux-5g',
-        
-        # Optimisation
-        'optimization': 'optimisation',
-        'optimisation': 'optimisation',
-        'resource': 'optimisation',
-        'edge': 'optimisation',
-        'scheduling': 'optimisation',
-        
-        # IA/ML
-        'ai': 'ia-ml',
-        'AI': 'ia-ml',
-        'machine': 'ia-ml',
-        'learning': 'ia-ml',
-        'deep': 'ia-ml',
-        'neural': 'ia-ml',
-        
-        # Quantique
-        'quantum': 'quantique',
-        'correction': 'quantique',
-        
-        # RH/Sociologie
-        'rh': 'rh-social',
-        'RH': 'rh-social',
-        'sociologie': 'rh-social',
-        'relations': 'rh-social',
-        'organisations': 'rh-social',
-    }
-    
-    # Chercher le premier keyword qui match un thème connu
-    for keyword in keywords:
-        keyword_lower = keyword.lower().strip()
-        # Chercher une correspondance exacte ou partielle
-        for term, theme in theme_mapping.items():
-            if term.lower() in keyword_lower or keyword_lower in term.lower():
-                return theme
-    
-    # Si aucun thème trouvé, utiliser le premier keyword
-    return slugify(keywords[0])
+def generate_categories(all_keywords: list[list[str]]) -> dict:
+    """
+    Génère des catégories cohérentes pour un ensemble de fichiers.
 
-# -------------------------------------------------
-# GROUPING (TOOL 2) - Regroupement intelligent
-# -------------------------------------------------
-def group_documents(files_info: list[dict]) -> dict:
-    groups = defaultdict(list)
-    for info in files_info:
-        # Normaliser le type de document
-        doc_type = normalize_doc_type(info["type"])
-        
-        # Obtenir le thème principal au lieu d'utiliser tous les keywords
-        keywords_list = info.get("keywords", [])[:2]
-        main_theme = get_main_theme(keywords_list)
-        
-        # Grouper par (type, thème)
-        groups[(doc_type, main_theme)].append(info)
+    Args:
+        all_keywords: Liste des keywords de chaque fichier [[kw1, kw2], [kw3, kw4], ...]
 
-    result = []
-    for (doc_type, theme), files in groups.items():
-        # Récupérer les keywords du premier fichier pour l'affichage
-        first_file_keywords = files[0].get("keywords", [])
-        result.append({
-            "type": doc_type,
-            "keywords": [theme],  # Utiliser le thème comme keyword unique
-            "files": [f["path"] for f in files]
-        })
-    return {"groups": result}
+    Returns:
+        Dict mapping index du fichier -> nom de catégorie
+    """
+    if not all_keywords:
+        return {}
 
-# -------------------------------------------------
-# Generate short folder name (2 words max)
-# -------------------------------------------------
-def generate_topic_folder(doc_type: str, keywords: list[str]) -> str:
-    if not keywords:
-        return "sans-theme"
+    # Préparer la liste des fichiers avec leurs keywords
+    files_desc = []
+    for i, keywords in enumerate(all_keywords):
+        kw_str = ", ".join(keywords) if keywords else "sans mots-clés"
+        files_desc.append(f"Fichier {i}: {kw_str}")
 
-    system_prompt = (
-        "Génère un nom de dossier court (max 2 mots) "
-        "basé sur le type de document et les mots-clés. "
-        "Répond STRICTEMENT en JSON : {\"name\": \"...\"}."
-    )
-    user_prompt = f"Type: {doc_type}\nKeywords: {', '.join(keywords)}"
+    system_prompt = """Tu es un assistant qui organise des fichiers en catégories.
+Tu reçois une liste de fichiers avec leurs mots-clés.
+Tu dois créer des CATÉGORIES COHÉRENTES pour regrouper les fichiers similaires.
+
+RÈGLES:
+- Crée entre 1 et 10 catégories maximum
+- Les noms de catégories doivent être courts (1-3 mots)
+- Regroupe les fichiers qui parlent du même sujet
+- Si des fichiers sont très similaires, mets-les dans la même catégorie
+
+Réponds UNIQUEMENT en JSON avec ce format:
+{
+  "categories": {
+    "0": "nom-categorie",
+    "1": "nom-categorie",
+    "2": "autre-categorie"
+  }
+}
+
+où les clés sont les numéros des fichiers et les valeurs sont les noms de catégories."""
+
+    user_prompt = "Voici les fichiers à catégoriser:\n\n" + "\n".join(files_desc)
 
     try:
         resp = ollama_client.chat(
@@ -173,16 +113,87 @@ def generate_topic_folder(doc_type: str, keywords: list[str]) -> str:
         )
 
         raw = resp["message"]["content"].strip()
-        if raw.startswith("```"):
-            raw = raw.strip("`")
-            if raw.lower().startswith("json"):
-                raw = raw[4:].strip()
-        name = json.loads(raw)["name"]
-        return slugify(name)
 
-    except Exception:
-        # Fallback si LLM échoue
-        return slugify(keywords[0])
+        # Nettoyer la réponse (enlever les blocs de code markdown)
+        if "```" in raw:
+            # Extraire le contenu entre ```json et ```
+            import re
+            match = re.search(r'```(?:json)?\s*(.*?)\s*```', raw, re.DOTALL)
+            if match:
+                raw = match.group(1)
+
+        data = json.loads(raw)
+        categories = data.get("categories", {})
+
+        # Convertir les clés en int et slugify les valeurs
+        result = {}
+        for key, value in categories.items():
+            try:
+                idx = int(key)
+                result[idx] = slugify(value)
+            except (ValueError, TypeError):
+                continue
+
+        return result
+
+    except Exception as e:
+        logger.warning(f"Erreur LLM pour catégories: {e}")
+        # Fallback : utiliser le premier keyword de chaque fichier
+        result = {}
+        for i, keywords in enumerate(all_keywords):
+            if keywords:
+                result[i] = slugify(keywords[0])
+            else:
+                result[i] = "general"
+        return result
+
+# -------------------------------------------------
+# GROUPING (TOOL 2) - Regroupement intelligent
+# -------------------------------------------------
+def group_documents(files_info: list[dict]) -> dict:
+    """
+    Regroupe les documents par type et catégorie thématique.
+    Utilise le LLM pour créer des catégories cohérentes en une seule passe.
+    """
+    if not files_info:
+        return {"groups": []}
+
+    # Étape 1: Collecter tous les keywords
+    all_keywords = []
+    for info in files_info:
+        keywords = info.get("keywords", [])[:3]  # Max 3 keywords par fichier
+        all_keywords.append(keywords)
+
+    # Étape 2: Générer les catégories via LLM (une seule fois pour tous les fichiers)
+    categories = generate_categories(all_keywords)
+
+    # Étape 3: Regrouper par (type normalisé, catégorie)
+    groups = defaultdict(list)
+    for i, info in enumerate(files_info):
+        doc_type = normalize_doc_type(info["type"])
+        category = categories.get(i, "general")
+        groups[(doc_type, category)].append(info)
+
+    # Étape 4: Construire le résultat
+    result = []
+    for (doc_type, category), files in groups.items():
+        result.append({
+            "type": doc_type,
+            "keywords": [category],
+            "files": [f["path"] for f in files]
+        })
+
+    return {"groups": result}
+
+# -------------------------------------------------
+# Generate short folder name (utilise directement la catégorie)
+# -------------------------------------------------
+def generate_topic_folder(keywords: list[str]) -> str:
+    """Retourne le nom du dossier thématique."""
+    if not keywords:
+        return "general"
+    # La catégorie est déjà slugifiée
+    return keywords[0]
 
 # -------------------------------------------------
 # Moving files (TOOL 3)
@@ -212,7 +223,7 @@ def apply_plan(root: Path, groups: list[dict]) -> dict:
         files = group["files"]
 
         type_folder = slugify(doc_type)
-        topic_folder = generate_topic_folder(doc_type, keywords)
+        topic_folder = generate_topic_folder(keywords)
 
         target_dir = root / type_folder / topic_folder
 

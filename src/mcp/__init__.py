@@ -1,2 +1,4 @@
-# mcp_core/__init__.py
-from .server import Server, tool
+# src/mcp/__init__.py
+from .server import mcp
+
+__all__ = ["mcp"]
