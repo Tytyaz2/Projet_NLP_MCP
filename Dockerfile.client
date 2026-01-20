@@ -13,6 +13,6 @@ COPY requirements-client.txt .
 RUN pip install --no-cache-dir -r requirements-client.txt
 
 # Copier le client MCP
-COPY mcp_client.py .
+COPY mcp_client_agent.py .
 
-CMD ["python", "mcp_client.py"]
+CMD ["python", "mcp_client_agent.py"]

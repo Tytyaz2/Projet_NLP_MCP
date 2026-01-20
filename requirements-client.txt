@@ -1,3 +1,5 @@
 requests
-langchain-ollama==0.1.0
-langchain-core==0.2.20
+langchain==0.2.15
+langchain-community>=0.2.15
+langchain-ollama>=0.1.1
+langchain-core>=0.2.33
