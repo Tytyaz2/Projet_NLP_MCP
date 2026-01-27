@@ -157,14 +157,15 @@ Dans Claude Desktop, dites :
 
 ---
 
-## Modes de fonctionnement (Streamlit)
+## Modes de fonctionnement
 
-| Mode | Outils | Description |
-|------|--------|-------------|
-| **Baseline** | Désactivés | Chat simple avec Gemini (comme ChatGPT). Pas d'accès aux fichiers. |
-| **MCP** | Activés | Gemini peut appeler les outils pour analyser et trier vos fichiers. |
+| Mode | Outils | Description | Interface |
+|------|--------|-------------|-----------|
+| **Baseline** | Désactivés | Chat simple sans accès aux fichiers. Pas d'analyse ni de tri. | Streamlit (toggle off) |
+| **Tool Calling** | Activés | Le LLM peut appeler les outils pour analyser et trier vos fichiers. | Streamlit (toggle on) + Claude Desktop |
 
-Le changement de mode **démarre automatiquement une nouvelle conversation**.
+- **Streamlit** : Basculez le toggle dans la sidebar. Le changement de mode **démarre automatiquement une nouvelle conversation**.
+- **Claude Desktop** : Les outils sont toujours disponibles via le serveur MCP.
 
 ---
 
