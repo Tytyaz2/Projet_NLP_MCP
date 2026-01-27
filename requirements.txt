@@ -1,3 +1,4 @@
+# Dépendances pour le serveur MCP (Docker + Claude Desktop)
 mcp
 fastapi
 uvicorn

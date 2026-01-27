@@ -1,0 +1,12 @@
+# Dépendances pour l'application Streamlit uniquement
+# (ne nécessite pas le package mcp)
+
+streamlit
+google-generativeai
+python-dotenv
+ollama
+pypdf
+python-docx
+langdetect
+pdfplumber
+nltk

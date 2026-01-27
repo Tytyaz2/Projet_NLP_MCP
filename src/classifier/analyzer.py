@@ -1,20 +1,90 @@
 import json
 import os
+import time
 from pathlib import Path
 from pypdf import PdfReader
 from docx import Document
 import ollama
+import httpx
 import logging
 
 from src.classifier.preprocessor import preprocess
 
 # Configuration du modèle depuis les variables d'environnement
-MODEL_NAME = os.getenv("OLLAMA_MODEL_NAME", "llama3:latest")
+MODEL_NAME = os.getenv("OLLAMA_MODEL_NAME", "gpt-oss:20b-cloud")
 
 # Configuration du client Ollama
-ollama_client = ollama.Client(host=os.getenv("OLLAMA_HOST", "http://localhost:11434"))
+OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
+ollama_client = ollama.Client(host=OLLAMA_HOST)
+
+# Configuration retry
+MAX_RETRIES = 3
+RETRY_DELAY = 2  # secondes entre chaque tentative
 
 logger = logging.getLogger(__name__)
+
+
+def check_ollama_available() -> bool:
+    """Vérifie si le serveur Ollama est accessible."""
+    try:
+        httpx.get(f"{OLLAMA_HOST}/api/tags", timeout=5)
+        return True
+    except (httpx.ConnectError, httpx.TimeoutException, Exception):
+        return False
+
+
+def call_ollama_with_retry(messages: list[dict], context: str = "") -> str:
+    """
+    Appelle Ollama avec retry automatique.
+
+    Args:
+        messages: Messages à envoyer au modèle
+        context: Description du contexte pour les logs (ex: nom du fichier)
+
+    Returns:
+        Le contenu de la réponse brute du modèle
+
+    Raises:
+        ConnectionError: Si Ollama est inaccessible après toutes les tentatives
+        RuntimeError: Si le modèle ne répond pas correctement après toutes les tentatives
+    """
+    if not check_ollama_available():
+        raise ConnectionError(
+            f"Ollama n'est pas accessible sur {OLLAMA_HOST}. "
+            "Vérifiez qu'Ollama est lancé avec 'ollama serve'."
+        )
+
+    last_error = None
+    for attempt in range(1, MAX_RETRIES + 1):
+        try:
+            resp = ollama_client.chat(model=MODEL_NAME, messages=messages)
+            raw = resp["message"]["content"].strip()
+            if raw:
+                return raw
+            last_error = RuntimeError("Réponse vide du modèle")
+            logger.warning(f"[RETRY {attempt}/{MAX_RETRIES}] {context}: réponse vide, nouvelle tentative...")
+        except ollama.ResponseError as e:
+            if "model" in str(e).lower() and "not found" in str(e).lower():
+                raise RuntimeError(
+                    f"Le modèle '{MODEL_NAME}' n'est pas installé. "
+                    f"Installez-le avec : ollama pull {MODEL_NAME}"
+                ) from e
+            last_error = e
+            logger.warning(f"[RETRY {attempt}/{MAX_RETRIES}] {context}: erreur Ollama ({e}), nouvelle tentative...")
+        except (httpx.ConnectError, httpx.TimeoutException, ConnectionError) as e:
+            last_error = ConnectionError(
+                f"Ollama a perdu la connexion sur {OLLAMA_HOST}. "
+                "Vérifiez qu'Ollama est toujours en cours d'exécution."
+            )
+            logger.warning(f"[RETRY {attempt}/{MAX_RETRIES}] {context}: connexion perdue ({e}), nouvelle tentative...")
+        except Exception as e:
+            last_error = e
+            logger.warning(f"[RETRY {attempt}/{MAX_RETRIES}] {context}: erreur ({e}), nouvelle tentative...")
+
+        if attempt < MAX_RETRIES:
+            time.sleep(RETRY_DELAY)
+
+    raise last_error or RuntimeError(f"Échec après {MAX_RETRIES} tentatives")
 
 # -------------------------------------------------
 # Extraction previews
@@ -122,15 +192,13 @@ RETOURNE EXACTEMENT CE JSON:
 """
 
     try:
-        resp = ollama_client.chat(
-            model=MODEL_NAME,
+        raw = call_ollama_with_retry(
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt}
-            ]
+            ],
+            context=filename
         )
-
-        raw = resp["message"]["content"].strip()
 
         # Nettoyage si le modèle ajoute des ```json
         if raw.startswith("```"):
@@ -146,11 +214,42 @@ RETOURNE EXACTEMENT CE JSON:
             "keywords": data.get("keywords", [])
         }
 
-    except Exception as e:
-        logger.error(f"[ERREUR LLM] {path}: {e}")
+    except ConnectionError as e:
+        logger.error(f"[OLLAMA INDISPONIBLE] {path}: {e}")
         return {
             "path": str(path),
             "type": "autre",
             "date": "unknown",
-            "keywords": []
+            "keywords": [],
+            "error": str(e)
+        }
+
+    except RuntimeError as e:
+        logger.error(f"[ERREUR MODÈLE] {path}: {e}")
+        return {
+            "path": str(path),
+            "type": "autre",
+            "date": "unknown",
+            "keywords": [],
+            "error": str(e)
+        }
+
+    except json.JSONDecodeError as e:
+        logger.error(f"[ERREUR JSON] {path}: réponse non-JSON du modèle")
+        return {
+            "path": str(path),
+            "type": "autre",
+            "date": "unknown",
+            "keywords": [],
+            "error": f"Le modèle n'a pas retourné un JSON valide: {e}"
+        }
+
+    except Exception as e:
+        logger.error(f"[ERREUR] {path}: {e}")
+        return {
+            "path": str(path),
+            "type": "autre",
+            "date": "unknown",
+            "keywords": [],
+            "error": str(e)
         }

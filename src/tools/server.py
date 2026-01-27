@@ -9,6 +9,38 @@ from src.mcp import mcp
 from src.classifier import analyze_document
 from src.classifier import group_documents, apply_plan
 
+SUPPORTED_EXTENSIONS = [".pdf", ".docx", ".txt", ".doc", ".odt"]
+
+
+# ────────────────────────────────────────────
+# Validation des paramètres
+# ────────────────────────────────────────────
+def validate_path(path: str) -> Path:
+    """Valide un chemin de fichier et retourne un objet Path."""
+    if not path or not isinstance(path, str):
+        raise ValueError("Le chemin doit être une chaîne non vide")
+    path = path.strip()
+    if not path:
+        raise ValueError("Le chemin ne peut pas être vide ou composé uniquement d'espaces")
+    return Path(path)
+
+
+def validate_extensions(extensions: list[str] | None) -> list[str]:
+    """Valide et retourne la liste d'extensions."""
+    if extensions is None:
+        return SUPPORTED_EXTENSIONS
+    if not isinstance(extensions, list):
+        raise ValueError("extensions doit être une liste de chaînes (ex: [\".pdf\", \".docx\"])")
+    validated = []
+    for ext in extensions:
+        if not isinstance(ext, str):
+            raise ValueError(f"Extension invalide : {ext} (doit être une chaîne)")
+        ext = ext.strip()
+        if not ext.startswith("."):
+            ext = f".{ext}"
+        validated.append(ext.lower())
+    return validated
+
 
 # ────────────────────────────────────────────
 # TOOL 1 : analyse d'un fichier
@@ -28,7 +60,18 @@ def analyze_file(path: str) -> dict:
         - date: date détectée dans le document
         - keywords: liste de mots-clés décrivant le contenu
     """
-    p = Path(path)
+    try:
+        p = validate_path(path)
+    except ValueError as e:
+        return {"error": str(e)}
+
+    if not p.exists():
+        return {"error": f"Le fichier {path} n'existe pas"}
+    if not p.is_file():
+        return {"error": f"{path} n'est pas un fichier"}
+    if p.suffix.lower() not in SUPPORTED_EXTENSIONS:
+        return {"error": f"Extension non supportée : {p.suffix}. Extensions supportées : {', '.join(SUPPORTED_EXTENSIONS)}"}
+
     info = analyze_document(p)
     return info
 
@@ -50,6 +93,13 @@ def group_files(files_info: list[dict]) -> list[dict]:
         - keywords: mots-clés communs au groupe
         - files: liste des chemins de fichiers dans ce groupe
     """
+    if not files_info or not isinstance(files_info, list):
+        return {"error": "files_info doit être une liste non vide de dictionnaires"}
+    for i, info in enumerate(files_info):
+        if not isinstance(info, dict):
+            return {"error": f"L'élément {i} n'est pas un dictionnaire valide"}
+        if "path" not in info or "type" not in info:
+            return {"error": f"L'élément {i} doit contenir au minimum 'path' et 'type'"}
     return group_documents(files_info)
 
 
@@ -68,7 +118,24 @@ def apply_file_plan(root: str, groups: list[dict]) -> dict:
     Returns:
         Résultat de l'opération avec les fichiers déplacés
     """
-    root_path = Path(root)
+    try:
+        root_path = validate_path(root)
+    except ValueError as e:
+        return {"error": str(e)}
+
+    if not root_path.exists():
+        return {"error": f"Le dossier {root} n'existe pas"}
+    if not root_path.is_dir():
+        return {"error": f"{root} n'est pas un dossier"}
+
+    if not groups or not isinstance(groups, list):
+        return {"error": "groups doit être une liste non vide de groupes"}
+    for i, g in enumerate(groups):
+        if not isinstance(g, dict):
+            return {"error": f"Le groupe {i} n'est pas un dictionnaire valide"}
+        if "type" not in g or "files" not in g:
+            return {"error": f"Le groupe {i} doit contenir 'type' et 'files'"}
+
     result = apply_plan(root_path, groups)
     return result
 
@@ -89,22 +156,30 @@ def list_files_to_sort(folder: str, extensions: list[str] = None) -> list[str]:
     Returns:
         Liste des chemins absolus des fichiers trouvés
     """
-    if extensions is None:
-        extensions = [".pdf", ".docx", ".txt", ".doc", ".odt"]
+    try:
+        folder_path = validate_path(folder)
+    except ValueError as e:
+        return {"error": str(e)}
 
-    folder_path = Path(folder)
     if not folder_path.exists():
         return {"error": f"Le dossier {folder} n'existe pas"}
+    if not folder_path.is_dir():
+        return {"error": f"{folder} n'est pas un dossier"}
+
+    try:
+        exts = validate_extensions(extensions)
+    except ValueError as e:
+        return {"error": str(e)}
 
     files = []
-    for ext in extensions:
+    for ext in exts:
         files.extend(folder_path.rglob(f"*{ext}"))
 
     return [str(f.absolute()) for f in files if f.is_file()]
 
 
 # ────────────────────────────────────────────
-# TOOL 5 : tri automatique complet 
+# TOOL 5 : tri automatique complet
 # ────────────────────────────────────────────
 @mcp.tool()
 def sort_folder(folder: str, dry_run: bool = False, extensions: list[str] = None) -> dict:
@@ -129,10 +204,18 @@ def sort_folder(folder: str, dry_run: bool = False, extensions: list[str] = None
         - groups: groupes créés avec leurs fichiers
         - moved: fichiers déplacés (vide si dry_run)
     """
-    if extensions is None:
-        extensions = [".pdf", ".docx", ".txt", ".doc", ".odt"]
+    try:
+        folder_path = validate_path(folder)
+    except ValueError as e:
+        return {"error": str(e)}
 
-    folder_path = Path(folder)
+    try:
+        extensions = validate_extensions(extensions)
+    except ValueError as e:
+        return {"error": str(e)}
+
+    if not isinstance(dry_run, bool):
+        return {"error": "dry_run doit être un booléen (true ou false)"}
 
     # Vérifications
     if not folder_path.exists():

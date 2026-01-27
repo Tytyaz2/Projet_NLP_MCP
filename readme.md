@@ -1,30 +1,88 @@
 # MCP - Tri Automatique de Documents
 
-Système de tri automatique de documents contenant du texte utilisant IA locale (Ollama) pour organiser vos fichiers intelligemment.
+Système de tri automatique de documents utilisant le **Tool Calling** et le **Model Context Protocol (MCP)** pour organiser vos fichiers intelligemment.
 
-**100% local** - Vos documents restent sur votre machine.
+**Deux modes d'utilisation :**
+
+| Mode | LLM | Protocole | Prérequis |
+|------|-----|-----------|-----------|
+| **Streamlit + Gemini** | Gemini (gratuit) | Function Calling | Python + Ollama |
+| **Claude Desktop + MCP** | Claude (Anthropic) | MCP standard | Docker + Ollama + Claude Desktop |
 
 ---
 
-## Démarrage rapide avec Claude Desktop
+## Option 1 : Streamlit + Gemini (gratuit)
+
+Interface web avec Gemini (Google AI) et son function calling natif. Toggle baseline/MCP pour comparer.
+
+### Prérequis
+
+- **Python 3.10+** installé
+- **Ollama** installé et en cours d'exécution
+- **Clé API Gemini** (gratuite) : [Obtenir sur Google AI Studio](https://aistudio.google.com/apikey)
+
+### Installation
+
+```bash
+# 1. Cloner le projet
+git clone https://github.com/votre-repo/Projet_NLP_MCP.git
+cd Projet_NLP_MCP
+
+# 2. Créer un environnement virtuel
+python -m venv venv
+
+# Windows PowerShell :
+.\venv\Scripts\Activate.ps1
+# Windows CMD :
+.\venv\Scripts\activate.bat
+# Linux/Mac :
+source venv/bin/activate
+
+# 3. Installer les dépendances
+pip install -r requirements_streamlit.txt
+
+# 4. Configurer l'environnement
+cp .env.example .env
+# Éditer .env et ajouter votre GEMINI_API_KEY
+```
+
+### Lancement
+
+```bash
+# Terminal 1 : Lancer Ollama
+ollama serve
+
+# Terminal 2 : Lancer l'application
+.\venv\Scripts\python.exe -m streamlit run streamlit_app.py
+```
+
+L'application s'ouvre sur `http://localhost:8501`
+
+### Utilisation
+
+1. **Coller votre clé API Gemini** dans la barre latérale
+2. **Mode Baseline** (par défaut) : Posez des questions, l'IA répond sans outils (comme ChatGPT)
+3. **Activer MCP** : Basculez le toggle pour donner accès aux outils de classification
+4. **Trier des fichiers** (mode MCP activé) : Utilisez des **chemins Windows absolus** :
+   - *"Analyse le fichier C:/Users/Utilisateur/Documents/rapport.pdf"*
+   - *"Trie le dossier C:/Users/Utilisateur/Downloads"*
+   - *"Trie C:/Users/Utilisateur/Desktop en mode dry-run"* (simulation sans déplacer)
+
+> **Important** : En mode Streamlit, utilisez les **chemins Windows réels** (ex: `C:/Users/VotreNom/Documents`).
+
+---
+
+## Option 2 : Claude Desktop + MCP (protocole standard)
+
+Architecture MCP-compliant avec un serveur FastMCP dans Docker, connecté à Claude Desktop via le protocole stdio.
 
 ### Prérequis
 
 - **Docker Desktop** installé et lancé
-- **Ollama** installé et en cours d'exécution sur votre PC
+- **Ollama** installé et en cours d'exécution
 - **Claude Desktop** installé avec un compte connecté
 
-```bash
-# Lancer Ollama (si pas déjà fait)
-ollama serve
-
-# Télécharger un modèle (au choix)
-ollama pull llama3:latest
-# ou
-ollama pull gpt-oss:20b-cloud
-```
-
-### Installation (3 étapes)
+### Installation
 
 ```bash
 # 1. Construire l'image Docker
@@ -40,34 +98,15 @@ python install_claude_desktop.py
 
 ### Utilisation
 
-Dans Claude Desktop, dites simplement :
+Dans Claude Desktop, dites :
 
 > **"Trie le dossier /home/user/Downloads"**
 
-ou en mode simulation (sans déplacer les fichiers) :
-
 > **"Trie /home/user/Documents en mode dry-run"**
 
----
+> **Rappel** : En mode Docker, utilisez les chemins `/home/user/...` (pas les chemins Windows).
 
-## Architecture
-
-```
-┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│ Claude Desktop  │ --> │  Docker (MCP)   │ --> │ Ollama (local)  │
-│                 │     │  file-classifier│     │ localhost:11434 │
-└─────────────────┘     └─────────────────┘     └─────────────────┘
-```
-
-- **Claude Desktop** : Interface utilisateur, appelle les outils MCP
-- **Docker** : Contient le serveur MCP avec les outils de tri
-- **Ollama** : Tourne en local sur votre PC, analyse les documents
-
----
-
-## Correspondance des chemins
-
-Le script d'installation monte automatiquement votre dossier utilisateur dans Docker :
+### Correspondance des chemins (Docker)
 
 | Votre PC (Windows) | Ce que vous dites à Claude |
 |--------------------|----------------------------|
@@ -77,25 +116,76 @@ Le script d'installation monte automatiquement votre dossier utilisateur dans Do
 
 ---
 
-## Outils MCP disponibles
+## Architecture
 
-| Outil | Description |
-|-------|-------------|
-| `sort_folder` | **Recommandé** - Trie automatiquement un dossier complet |
-| `list_files_to_sort` | Liste les fichiers d'un dossier |
-| `analyze_file` | Analyse un fichier avec l'IA |
-| `group_files` | Regroupe les fichiers analysés |
-| `apply_file_plan` | Applique le plan de tri |
+### Mode Streamlit (Tool Calling)
+
+```
+┌────────────┐     ┌─────────────────┐     ┌─────────────────┐
+│ Navigateur │ --> │   Streamlit     │ --> │ Gemini (Google)  │
+│ :8501      │     │  streamlit_app  │     │ Function Calling │
+└────────────┘     └───────┬─────────┘     └─────────────────┘
+                           │
+                    (mode MCP activé)
+                           │
+                   ┌───────▼─────────┐
+                   │  Ollama (local) │
+                   │ localhost:11434 │
+                   └─────────────────┘
+```
+
+- **Gemini** : LLM cloud avec function calling natif (gratuit, 15 req/min)
+- **Ollama** : Analyse le contenu des fichiers localement
+- **Streamlit** : Interface web interactive
+
+### Mode Claude Desktop (MCP standard)
+
+```
+┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
+│ Claude Desktop  │ --> │  Docker (MCP)   │ --> │ Ollama (local)  │
+│  (client MCP)   │     │  FastMCP server │     │ localhost:11434 │
+└─────────────────┘     └─────────────────┘     └─────────────────┘
+        │                       │
+   protocole MCP           protocole stdio
+   (JSON-RPC 2.0)         (stdin/stdout)
+```
+
+- **Claude Desktop** : Client MCP natif (envoie les requêtes JSON-RPC)
+- **FastMCP** : Serveur MCP Python qui expose les outils via le protocole standard
+- **Docker** : Isolation et portabilité du serveur MCP
+- **Ollama** : Analyse locale des fichiers
 
 ---
 
-## Comment ça marche ?
+## Modes de fonctionnement (Streamlit)
 
-### Pipeline de traitement
+| Mode | Outils | Description |
+|------|--------|-------------|
+| **Baseline** | Désactivés | Chat simple avec Gemini (comme ChatGPT). Pas d'accès aux fichiers. |
+| **MCP** | Activés | Gemini peut appeler les outils pour analyser et trier vos fichiers. |
+
+Le changement de mode **démarre automatiquement une nouvelle conversation**.
+
+---
+
+## Outils disponibles
+
+| Outil | Description | Disponible dans |
+|-------|-------------|-----------------|
+| `list_files_to_sort` | Liste les fichiers d'un dossier | Streamlit + Claude Desktop |
+| `analyze_file` | Analyse un fichier (type, date, mots-clés) | Streamlit + Claude Desktop |
+| `sort_folder` | Trie automatiquement un dossier complet | Streamlit + Claude Desktop |
+| `group_files` | Regroupe les documents par type et thème | Claude Desktop uniquement |
+| `apply_file_plan` | Applique un plan d'organisation | Claude Desktop uniquement |
+
+---
+
+## Pipeline de traitement
 
 ```
 [Fichiers bruts]
     → [Extraction contenu (PDF, DOCX, TXT)]
+    → [Prétraitement NLP (nettoyage, tokenisation, stemming)]
     → [Analyse LLM (Ollama)]
     → [Classification par type et thème]
     → [Organisation automatique en dossiers]
@@ -131,68 +221,70 @@ Downloads/
 
 ---
 
-## Structure du projet
+## Configuration
 
+### Variables d'environnement (.env)
+
+```bash
+cp .env.example .env
 ```
-Projet_NLP_MCP/
-├── docker/
-│   ├── Dockerfile               # Image Docker du serveur MCP
-│   ├── docker-compose.yml       # Orchestration
-│   └── .env                     # Configuration (modèle Ollama)
-├── src/
-│   ├── mcp/
-│   │   └── server.py            # Serveur FastMCP
-│   ├── classifier/
-│   │   ├── analyzer.py          # Extraction + analyse LLM
-│   │   └── organizer.py         # Regroupement + déplacement
-│   └── tools/
-│       └── server.py            # 5 outils MCP exposés
-├── install_claude_desktop.py    # Script d'installation automatique
-├── claude_desktop_config.template.json
-├── main.py                      # CLI standalone (sans Claude)
-└── requirements.txt
+
+| Variable | Description | Valeur par défaut | Utilisé par |
+|----------|-------------|-------------------|-------------|
+| `GEMINI_API_KEY` | Clé API Gemini | - | Streamlit |
+| `GEMINI_MODEL` | Modèle Gemini | `gemini-2.0-flash` | Streamlit |
+| `OLLAMA_HOST` | URL d'Ollama | `http://localhost:11434` | Les deux |
+| `OLLAMA_MODEL_NAME` | Modèle Ollama | `gpt-oss:20b-cloud` | Les deux |
+
+### Obtenir la clé API Gemini (gratuit)
+
+1. Aller sur [Google AI Studio](https://aistudio.google.com/apikey)
+2. Se connecter avec un compte Google
+3. Cliquer sur **"Create API Key"**
+4. Copier la clé (format : `AIzaSy...xxxxx`)
+5. La coller dans `.env` ou directement dans la sidebar de l'app
+
+**Limites du tier gratuit :**
+
+| Limite | Valeur |
+|--------|--------|
+| Requêtes/minute | 15 |
+| Requêtes/jour | 1500 |
+
+### Configurer Ollama
+
+```bash
+# Installer un modèle (au choix)
+ollama pull llama3:latest        # Recommandé pour débuter
+ollama pull mistral:latest       # Alternative légère
 ```
 
 ---
 
-## Configuration
+## Structure du projet
 
-### Fichier d'environnement (.env)
-
-Avant de lancer le projet, vous devez créer le fichier de configuration :
-
-```bash
-# Copier le fichier exemple
-cd docker
-cp .env.example .env
 ```
-
-Puis éditez `docker/.env` selon vos besoins :
-
-| Variable | Description | Valeur par défaut |
-|----------|-------------|-------------------|
-| `OLLAMA_MODEL_NAME` | Modèle Ollama à utiliser | `deepseek-v3.1:671b-cloud` |
-| `OLLAMA_MODEL_PATH` | Chemin local vers les modèles Ollama | `${USERPROFILE}\.ollama` (Windows) |
-| `FILES_TO_SORT` | Dossier à trier (monté dans `/files` dans Docker) | `./files_to_sort` |
-| `MCP_PORT` | Port du serveur MCP | `3000` |
-| `OLLAMA_PORT` | Port d'Ollama | `11434` |
-
-### Changer le modèle Ollama
-
-Dans `docker/.env`, modifiez `OLLAMA_MODEL_NAME` :
-
-```bash
-# Cloud (performant, nécessite connexion)
-OLLAMA_MODEL_NAME=deepseek-v3.1:671b-cloud
-
-# Local (recommandé pour débuter)
-OLLAMA_MODEL_NAME=llama3:latest
-
-# Local (alternative légère)
-OLLAMA_MODEL_NAME=mistral:latest
+Projet_NLP_MCP/
+├── streamlit_app.py                # Interface web Streamlit (Gemini + function calling)
+├── .env.example                    # Configuration (Gemini + Ollama)
+├── requirements_streamlit.txt      # Dépendances Streamlit
+├── requirements.txt                # Dépendances MCP (Docker)
+├── src/
+│   ├── classifier/
+│   │   ├── analyzer.py             # Extraction + analyse LLM (Ollama)
+│   │   ├── preprocessor.py         # Pipeline NLP (NLTK)
+│   │   └── organizer.py            # Regroupement + déplacement
+│   ├── mcp/
+│   │   └── server.py               # Serveur FastMCP
+│   └── tools/
+│       └── server.py               # Outils MCP exposés (5 tools)
+├── docker/
+│   ├── Dockerfile                  # Image Docker du serveur MCP
+│   └── docker-compose.yml          # Orchestration
+├── install_claude_desktop.py       # Script d'installation Claude Desktop
+├── claude_desktop_config.template.json
+└── files_to_sort/                  # Dossier de test avec fichiers exemples
 ```
-
-Puis reconstruisez : `cd docker && docker-compose build`
 
 ---
 
@@ -205,42 +297,53 @@ Puis reconstruisez : `cd docker && docker-compose build`
 
 ---
 
+## Comparaison Baseline vs Tool Calling
+
+| Critère | Baseline (sans outils) | Avec Tool Calling |
+|---------|----------------------|-------------------|
+| **Accès aux fichiers** | Non | Oui |
+| **Analyse de contenu** | Non | Oui (via Ollama) |
+| **Tri automatique** | Non | Oui |
+| **Qualité des réponses sur les fichiers** | Hallucinations possibles | Basé sur le contenu réel |
+| **Cas d'usage** | Chat général | Classification et organisation de fichiers |
+
+---
+
 ## Dépannage
 
-### Claude Desktop : "Server disconnected"
+### Erreur 429 "Quota exceeded" (Gemini)
 
-1. Vérifiez que **Docker Desktop** est lancé
-2. Vérifiez que l'image est construite :
-   ```bash
-   cd docker && docker-compose build
-   ```
-3. Vérifiez qu'**Ollama** tourne :
-   ```bash
-   ollama serve
-   ollama list
-   ```
-4. Relancez le script d'installation :
-   ```bash
-   python install_claude_desktop.py
-   ```
-5. **Redémarrez complètement** Claude Desktop
+Le quota gratuit de Gemini est épuisé.
 
-### Erreur "model not found"
+- **Solution** : Attendre le lendemain (le quota se réinitialise chaque jour)
+- **Alternative** : Créer un nouveau projet sur Google AI Studio avec une nouvelle clé
+
+### Erreur "model not found" (Ollama)
 
 ```bash
 ollama pull llama3:latest
 ```
 
+### Ollama ne répond pas
+
+```bash
+# Vérifier qu'Ollama tourne
+ollama serve
+
+# Vérifier les modèles installés
+ollama list
+```
+
 ### Classification imprécise
 
-- Utilisez un modèle plus puissant : `gpt-oss:20b-cloud`
+- Utilisez un modèle Ollama plus puissant
 - Vérifiez que vos fichiers contiennent du texte extractible
 
 ---
 
 ## Sécurité & Confidentialité
 
-- **100% local** - Vos fichiers ne quittent jamais votre machine
+- **Fichiers analysés localement** - Ollama tourne sur votre machine
 - **Aucune suppression** - Les fichiers sont déplacés, jamais supprimés
 - **Open source** - Code auditable
 
@@ -248,8 +351,12 @@ ollama pull llama3:latest
 
 ## Technologies
 
-- **MCP (Model Context Protocol)** - Protocole de communication IA ↔ outils
-- **FastMCP** - Framework Python pour serveurs MCP
-- **Ollama** - Exécution locale de LLMs
-- **Docker** - Portabilité et isolation
-- **Python 3.11** - Backend
+- **Gemini (Google AI)** - LLM cloud avec function calling (gratuit)
+- **Claude Desktop** - Client MCP natif (Anthropic)
+- **FastMCP** - Framework Python pour serveurs MCP standard
+- **MCP (Model Context Protocol)** - Protocole standardisé IA <-> outils (JSON-RPC 2.0)
+- **Ollama** - Exécution locale de LLMs pour l'analyse de fichiers
+- **Streamlit** - Interface web interactive
+- **NLTK** - Pipeline NLP (tokenisation, stemming, stopwords)
+- **Docker** - Isolation du serveur MCP
+- **Python 3.10+** - Backend

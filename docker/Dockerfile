@@ -13,22 +13,11 @@ RUN apt-get update && apt-get install -y \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# --- Installer Ollama client (optionnel) ---
-# ⚠ Si tu veux utiliser Ollama en local, il doit tourner dans un autre conteneur :
-# docker run -d --gpus=all -p 11434:11434 ollama/ollama:latest
-RUN curl -fsSL https://ollama.com/install.sh | sh || true
-
 # --- Ajouter le code du serveur MCP ---
 WORKDIR /app
 COPY . /app
 
 # --- Installer les dépendances Python ---
-# Ajoute un fichier requirements.txt contenant :
-# mcp
-# fastapi
-# uvicorn
-# python-dotenv
-# ollama
 RUN pip install --upgrade pip
 RUN pip install -r requirements.txt
 

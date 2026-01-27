@@ -5,7 +5,7 @@
       "args": [
         "run", "-i", "--rm",
         "-e", "OLLAMA_HOST=http://host.docker.internal:11434",
-        "-e", "OLLAMA_MODEL_NAME=gpt-oss:20b-cloud",
+        "-e", "OLLAMA_MODEL_NAME=llama3:latest",
         "-v", "${USER_HOME}:/home/user",
         "docker-mcp"
       ]

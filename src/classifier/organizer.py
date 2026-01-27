@@ -1,18 +1,12 @@
 import json
-import os
 import shutil
 from pathlib import Path
 from collections import defaultdict
 import unicodedata
 import re
-import ollama
 import logging
 
-# Configuration du modèle depuis les variables d'environnement
-MODEL_NAME = os.getenv("OLLAMA_MODEL_NAME", "llama3:latest")
-
-# Configuration du client Ollama
-ollama_client = ollama.Client(host=os.getenv("OLLAMA_HOST", "http://localhost:11434"))
+from src.classifier.analyzer import call_ollama_with_retry
 
 logger = logging.getLogger(__name__)
 
@@ -104,20 +98,16 @@ où les clés sont les numéros des fichiers et les valeurs sont les noms de cat
     user_prompt = "Voici les fichiers à catégoriser:\n\n" + "\n".join(files_desc)
 
     try:
-        resp = ollama_client.chat(
-            model=MODEL_NAME,
+        raw = call_ollama_with_retry(
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
-            ]
+            ],
+            context="generate_categories"
         )
-
-        raw = resp["message"]["content"].strip()
 
         # Nettoyer la réponse (enlever les blocs de code markdown)
         if "```" in raw:
-            # Extraire le contenu entre ```json et ```
-            import re
             match = re.search(r'```(?:json)?\s*(.*?)\s*```', raw, re.DOTALL)
             if match:
                 raw = match.group(1)
@@ -136,9 +126,19 @@ où les clés sont les numéros des fichiers et les valeurs sont les noms de cat
 
         return result
 
-    except Exception as e:
-        logger.warning(f"Erreur LLM pour catégories: {e}")
+    except (ConnectionError, RuntimeError) as e:
+        logger.warning(f"Ollama indisponible pour catégories: {e}")
         # Fallback : utiliser le premier keyword de chaque fichier
+        result = {}
+        for i, keywords in enumerate(all_keywords):
+            if keywords:
+                result[i] = slugify(keywords[0])
+            else:
+                result[i] = "general"
+        return result
+
+    except Exception as e:
+        logger.warning(f"Erreur pour catégories: {e}")
         result = {}
         for i, keywords in enumerate(all_keywords):
             if keywords:

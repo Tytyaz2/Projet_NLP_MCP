@@ -7,11 +7,11 @@ services:
     restart: "no"
     stdin_open: true   # Nécessaire pour MCP (communication stdio)
     tty: true
+    env_file:
+      - ../.env   # Utilise le .env à la racine du projet
     environment:
-      # URL d'Ollama (sur l'hôte Windows)
+      # URL d'Ollama (sur l'hôte Windows, override pour Docker)
       - OLLAMA_HOST=http://host.docker.internal:11434
-      # Modèle Ollama à utiliser
-      - OLLAMA_MODEL_NAME=${OLLAMA_MODEL_NAME:-gpt-oss:20b-cloud}
       # Dossier à trier (dans le conteneur)
       - FILES_TO_SORT=/files
     volumes:
