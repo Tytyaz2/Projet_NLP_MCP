@@ -25,7 +25,7 @@ Interface web avec Gemini (Google AI) et son function calling natif. Toggle base
 
 ```bash
 # 1. Cloner le projet
-git clone https://github.com/votre-repo/Projet_NLP_MCP.git
+git clone https://github.com/Tytyaz2/Projet_NLP_MCP.git
 cd Projet_NLP_MCP
 
 # 2. Créer un environnement virtuel
